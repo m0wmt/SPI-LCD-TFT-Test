@@ -71,7 +71,7 @@ void setup() {
     Serial.println("Hello ESP32-WROOM-32D and SPI LCD TFT Display");
 
     tft.init();
-    tft.invertDisplay(false); // Required for my LCD TFT screen to color correction
+    tft.invertDisplay(false); // Required for my LCD TFT screen for color correction
 
     tft.setRotation(3);
     tft.pushImage(75, 75, 320, 170, (uint16_t *)img_logo);
