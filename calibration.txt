@@ -1,0 +1,11 @@
+Hello ESP32-WROOM-32D and SPI LCD TFT Display
+3660,250,  3575,3,  367,16192,  369,16192
+Initialisation complete
+
+Hello ESP32-WROOM-32D and SPI LCD TFT Display
+3620,305,  3546,3,  367,16192,  369,16192
+Initialisation complete
+
+Hello ESP32-WROOM-32D and SPI LCD TFT Display
+3647,260,  3571,3,  376,16192,  378,16192
+Initialisation complete
