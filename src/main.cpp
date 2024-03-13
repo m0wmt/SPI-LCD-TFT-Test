@@ -75,7 +75,7 @@ TFT_eSPI_Button key[totalButtonNumber];     // TFT_eSPI button class
 #define COL_WIDTH 8       // TEXT_WIDTH + 2
 
 #define MAX_CHR 35        // characters per line (tft.height() / LINE_HEIGHT);
-#define MAX_COL 52        // maximum number of columns (tft.width() / COL_WIDTH);
+#define MAX_COL 53        // maximum number of columns (tft.width() / COL_WIDTH);
 #define MAX_COL_DOT6 31   // MAX_COL * 0.6
 
 int col_pos[MAX_COL];
@@ -99,7 +99,7 @@ SemaphoreHandle_t tftSemaphore;
 SemaphoreHandle_t animationSemaphore;
 SemaphoreHandle_t matrixSemaphore;
 
-void animationTaskTask(void *parameter);
+void animationTask(void *parameter);
 void matrixTask(void *parameter);
 void touchTask(void *parameter);
 //
@@ -362,7 +362,7 @@ void animationTask(void *parameter) {
     bool gridExport = true;
     bool waterHeating = true;
 
-    int n;
+    // int n;
 
     for ( ;; ) {
         // If already taken moving arrow will stop
@@ -413,12 +413,12 @@ void animationTask(void *parameter) {
         xSemaphoreGive(animationSemaphore);
         vTaskDelay(150 / portTICK_PERIOD_MS);
         // How much stack are we using
-        n++;
-        if (n > 20) {
-            n = 0;
-            Serial.print("Annimation Task Stack Left: ");
-            Serial.println(uxTaskGetStackHighWaterMark(NULL));
-        }
+        // n++;
+        // if (n > 20) {
+        //     n = 0;
+        //     Serial.print("Annimation Task Stack Left: ");
+        //     Serial.println(uxTaskGetStackHighWaterMark(NULL));
+        // }
     }
     vTaskDelete( NULL );
 }
@@ -448,12 +448,8 @@ void touchTask(void *parameter) {
                 Serial.println("A start screen saver");
                 // Take semaphores to stop tasks
 
-                if (xSemaphoreTake(sunSemaphore, portMAX_DELAY))    
-                    Serial.println("sunSemaphore taken");
-                if (xSemaphoreTake(gridSemaphore, portMAX_DELAY))
-                    Serial.println("gridSemaphore taken");
-                if (xSemaphoreTake(waterTankSemaphore, portMAX_DELAY)) 
-                    Serial.println("waterTankSemaphore taken");
+                if (xSemaphoreTake(animationSemaphore, portMAX_DELAY))    
+                    Serial.println("animationSemaphore taken");
 
                 xSemaphoreTake(tftSemaphore, portMAX_DELAY);
                 tft.fillScreen(TFT_BLACK);
@@ -470,12 +466,15 @@ void touchTask(void *parameter) {
 
                 if (xSemaphoreGive(matrixSemaphore)) {
                     Serial.println("matrix semaphore given");
+                } else {
+                    Serial.println("unable to take matrix semaphore!");
                 }
 
             } else if (status == 1) {
                 status = 0;
                 Serial.println("A stop screen saver");
                 xSemaphoreTake(matrixSemaphore, portMAX_DELAY);
+                xSemaphoreTake(tftSemaphore, portMAX_DELAY);
 
                 // Redraw screen ready for graphics
                 tft.fillScreen(TFT_WHITE);
@@ -496,17 +495,16 @@ void touchTask(void *parameter) {
                 drawSun(200, 200);
 
                 // Give semaphores back so tasks can continue
-                xSemaphoreGive(sunSemaphore);
-                xSemaphoreGive(gridSemaphore);
-                xSemaphoreGive(waterTankSemaphore);
+                xSemaphoreGive(tftSemaphore);
+                xSemaphoreGive(animationSemaphore);
             }
         }
         if (key[2].justPressed()) {
             key[2].press(false);
-            vTaskDelay(10); // debounce
+            vTaskDelay(10 / portTICK_PERIOD_MS); // debounce
         }
 
-        vTaskDelay(100);
+        vTaskDelay(100 / portTICK_PERIOD_MS);
         // How much stack are we using
         // k++;
         // if (k > 1) {
@@ -519,6 +517,7 @@ void touchTask(void *parameter) {
 }
 void matrixTask(void *parameter) {
     Serial.println("matrixTaskCreated");
+    vTaskDelay(1000 / portTICK_PERIOD_MS);
 
     for ( ;; ) {
         xSemaphoreTake(matrixSemaphore, portMAX_DELAY);
@@ -531,11 +530,10 @@ void matrixTask(void *parameter) {
 
             for (int i = 0; i < MAX_CHR; i++) { // 40
                 xSemaphoreTake(tftSemaphore, portMAX_DELAY);
-                tft.setTextColor(color_map[rnd_col_pos][i] << 5, TFT_GREEN); // Set the green character brightness
+                tft.setTextColor(color_map[rnd_col_pos][i] << 5, TFT_BLACK); // Set the green character brightness
 
                 if (color_map[rnd_col_pos][i] == 63) {
-                    tft.setTextColor(TFT_RED, TFT_WHITE); // Draw white character
-                    Serial.println("set text colour!");
+                    tft.setTextColor(TFT_GREEN_ENERGY, TFT_BLACK); // Draw darker green character
                 }
 
                 if ((chr_map[rnd_col_pos][i] == 0) || (color_map[rnd_col_pos][i] == 63)) {
@@ -581,7 +579,7 @@ void matrixTask(void *parameter) {
         }        
 
         xSemaphoreGive(matrixSemaphore);
-        vTaskDelay(10);
+        vTaskDelay(50 / portTICK_PERIOD_MS);
     }
     vTaskDelete( NULL );
 }
