@@ -1,7 +1,8 @@
 Currently in development/testing 
 
-Test using LCD TFT SPI screen and ESP32
+Test of TFT_eSPI library using an LCD TFT SPI screen (480*320) and ESP32.
 
+Drawings / animations are for development of the iBoost Monitor.
 ## Wiring 
 
 ![Wiring](./images/)

@@ -20,6 +20,9 @@
 */
 #include <Arduino.h>
 #include <SPI.h>
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "freertos/semphr.h"
 #include "TFT_eSPI.h"
 #include "img_logo.h"
 
@@ -42,6 +45,119 @@
     14 T_IRQ                Currently not connected
 */
 
+TFT_eSPI tft = TFT_eSPI();              // TFT object
+TFT_eSprite sunSprite = TFT_eSprite(&tft);    // Sprite object
+TFT_eSprite gridSprite = TFT_eSprite(&tft);    // Sprite object
+TFT_eSprite waterTankSprite = TFT_eSprite(&tft);    // Sprite object
+
+// TFT specific defines
+#define TOUCH_CS 21             // Touch CS to PIN 21
+#define REPEAT_CAL false        // True if calibration is requested after reboot
+#define TFT_GREY    0x5AEB
+#define TFT_TEAL    0x028A      // RGB 00 80 80
+// #define TFT_ORANGE  0xFBE1    // RGB 255 127 00
+#define TFT_GREEN_ENERGY    0x1d85  // RGB 3 44 5
+
+#define totalButtonNumber 3
+#define LABEL1_FONT &FreeSansOblique12pt7b  // Key label font 1
+#define LABEL2_FONT &FreeSansBold12pt7b     // Key label font 2
+TFT_eSPI_Button key[totalButtonNumber];     // TFT_eSPI button class
+
+// Screen Saver 
+#define TEXT_HEIGHT 8     // Height of text to be printed and scrolled
+#define TEXT_WIDTH 6      // Width of text to be printed and scrolled
+
+#define LINE_HEIGHT 9     // TEXT_HEIGHT + 1
+#define COL_WIDTH 8       // TEXT_WIDTH + 2
+
+#define MAX_CHR 35        // characters per line (tft.height() / LINE_HEIGHT);
+#define MAX_COL 52        // maximum number of columns (tft.width() / COL_WIDTH);
+#define MAX_COL_DOT6 31   // MAX_COL * 0.6
+
+int col_pos[MAX_COL];
+
+int chr_map[MAX_COL][MAX_CHR];
+byte color_map[MAX_COL][MAX_CHR];
+
+uint16_t yPos = 0;
+
+int rnd_x;
+int rnd_col_pos;
+int color;
+//
+
+// freeRTOS
+TaskHandle_t sunTaskHandle = NULL;
+TaskHandle_t gridTaskHandle = NULL;
+TaskHandle_t waterTankTaskHandle = NULL;
+TaskHandle_t matrixTaskHandle = NULL;
+TaskHandle_t touchTaskHandle = NULL;
+
+SemaphoreHandle_t tftSemaphore;
+SemaphoreHandle_t sunSemaphore;
+SemaphoreHandle_t gridSemaphore;
+SemaphoreHandle_t waterTankSemaphore;
+SemaphoreHandle_t matrixSemaphore;
+
+void sunTask(void *parameter);
+void gridTask(void *parameter);
+void waterTankTask(void *parameter);
+void matrixTask(void *parameter);
+void touchTask(void *parameter);
+//
+
+int minute = 0;
+
+// Touchscreen related
+uint16_t t_x = 0, t_y = 0;      // touch screen coordinates
+int xw = tft.width()/2;         // xw, yh are middle of the screen
+int yh = tft.height()/2;
+bool pressed = false;
+//
+
+// This struct holds all the variables we need to draw a rounded square
+struct RoundedSquare {
+    int xStart;
+	int yStart;
+	int width;
+	int height;
+	byte cornerRadius;
+	uint16_t color;
+};
+
+int xMargin = 10;
+int margin = 290;
+
+RoundedSquare btnA = {
+	xMargin,
+	margin,
+	40,
+	20,
+	4,
+	TFT_LIGHTGREY
+};
+
+//btnB takes btnA as refference to position itself
+RoundedSquare btnB = {
+	btnA.xStart + btnA.width + xMargin,
+	margin,
+	40,
+	20,
+	4,
+	TFT_LIGHTGREY
+};
+
+//btnC takes btnB as refference to position itself
+RoundedSquare btnC = {
+	btnB.xStart + btnB.width + xMargin,
+	margin,
+	40,
+	20,
+	4,
+	TFT_TEAL
+};
+//
+
 // Function defenitions
 void calibrateTouchScreen(void);
 void drawButtons(void);
@@ -51,30 +167,18 @@ void showMessage(String msg);
 void drawHouse(int x, int y);
 void drawPylon(void);
 void drawSun(int x, int y);
-void addSun(int x, int y, int scale, boolean icon_size, uint16_t icon_color);
-
-TFT_eSPI tft = TFT_eSPI();              // TFT object
-TFT_eSprite spr = TFT_eSprite(&tft);    // Sprite object
-
-// TFT specific defines
-#define TOUCH_CS 21             // Touch CS to PIN 21
-#define REPEAT_CAL false        // True if calibration is requested after reboot
-#define TFT_GREY    0x5AEB
-#define TFT_TEAL    0x028A      // RGB 00 80 80
-// #define TFT_ORANGE  0xFBE1    // RGB 255 127 00
-
-#define totalButtonNumber 3
-#define LABEL1_FONT &FreeSansOblique12pt7b  // Key label font 1
-#define LABEL2_FONT &FreeSansBold12pt7b     // Key label font 2
-TFT_eSPI_Button key[totalButtonNumber];     // TFT_eSPI button class
-
-int minute = 0;
+void matrix(void);
+void drawRoundedSquare(RoundedSquare toDraw);
 
 void setup() {
+    BaseType_t xReturned;
+
     // Set all chip selects high to avoid bus contention during initialisation of each peripheral
     digitalWrite(TOUCH_CS, HIGH);   // ********** TFT_eSPI touch **********
     digitalWrite(TFT_CS, HIGH);     // ********** TFT_eSPI screen library **********
     // digitalWrite(SD_CS, HIGH);   // ********** SD card **********
+
+    randomSeed(analogRead(A0));
 
     Serial.begin(115200);
     delay (2000);
@@ -88,40 +192,96 @@ void setup() {
     tft.setRotation(3);
     tft.pushImage(75, 75, 320, 170, (uint16_t *)img_logo);
 
-    delay(4000);
+    delay(2000);
 
     tft.setTextSize(2);
-    tft.fillScreen(TFT_BLACK);
-    tft.setTextColor(TFT_TEAL, TFT_BLACK);
+    tft.fillScreen(TFT_WHITE);
 
     calibrateTouchScreen();
 
     Serial.println("Initialisation complete");
-    delay(2000);
 
-    tft.fillScreen(TFT_BLACK);
-    tft.setTextColor(TFT_WHITE, TFT_BLACK);
+    tft.setTextColor(TFT_BLACK, TFT_WHITE);
 
     //drawButtons();
 
-    // Create the Sprite
-    spr.setColorDepth(8);      // Create an 8bpp Sprite of 60x30 pixels
-    spr.createSprite(100, 30);  // 8bpp requires 64 * 30 = 1920 bytes
+    // Create the Sprites
+    sunSprite.setColorDepth(8);      // Create an 8bpp Sprite of 60x30 pixels
+    sunSprite.createSprite(100, 20);  // 8bpp requires 64 * 30 = 1920 bytes
+    gridSprite.setColorDepth(8);      // Create an 8bpp Sprite of 60x30 pixels
+    gridSprite.createSprite(100, 20);  // 8bpp requires 64 * 30 = 1920 bytes
+    waterTankSprite.setColorDepth(8);      // Create an 8bpp Sprite of 60x30 pixels
+    waterTankSprite.createSprite(100, 20);  // 8bpp requires 64 * 30 = 1920 bytes
 
-    showMessage("moving arrow");
+    // // vertical lines on screen to help with graphic placement
+    // for (int i = 10; i < 480; i += 10) {
+    //     tft.drawLine(i, 0, i, 320, TFT_BLUE);
+    // }
+    // // horizontal lines on screen to help with graphic placement
+    // for (int i = 10; i < 320; i += 10) {
+    //     tft.drawLine(0, i, 480, i, TFT_BLUE);
+    // }
+
+    // Right (>) pointing triangle 400 = point x, 50 = point y, 390 = base x, 40 = base y top, 390 = base x, 60 = base y bottom
+    tft.fillTriangle(400, 50, 390, 40, 390, 60, TFT_BLACK);
+
+    // Left (<) pointing triangle 400 = point x, 80 = point y, 410 = base x, 70 = base y top, 410 = base x, 80 = base y bottom
+    tft.fillTriangle(400, 80, 410, 70, 410, 90, TFT_BLACK);
+
+    //This passes our buttons and draws them on the screen
+	drawRoundedSquare(btnA);
+	drawRoundedSquare(btnB);
+	drawRoundedSquare(btnC);
 
     drawHouse(10, 10);
     drawPylon();
     drawSun(200, 200);
+
+    tftSemaphore = xSemaphoreCreateBinary();
+    xSemaphoreGive(tftSemaphore);
+    sunSemaphore = xSemaphoreCreateBinary();
+    xSemaphoreGive(sunSemaphore);
+    gridSemaphore = xSemaphoreCreateBinary();
+    xSemaphoreGive(gridSemaphore);
+    waterTankSemaphore = xSemaphoreCreateBinary();
+    xSemaphoreGive(waterTankSemaphore);
+    matrixSemaphore = xSemaphoreCreateBinary();
+    xSemaphoreGive(matrixSemaphore);
+
+    xReturned = xTaskCreate(sunTask, "sunTask", 2048, NULL, tskIDLE_PRIORITY, &sunTaskHandle);
+    if (xReturned != pdPASS) {
+        Serial.println("Failed to create sunTask");
+    }
+
+    xReturned = xTaskCreate(gridTask, "gridTask", 2048, NULL, tskIDLE_PRIORITY, &gridTaskHandle);
+    if (xReturned != pdPASS) {
+        Serial.println("Failed to create gridTask");
+    }
+
+    xReturned = xTaskCreate(waterTankTask, "waterTankTask", 2048, NULL, tskIDLE_PRIORITY, &waterTankTaskHandle);
+    if (xReturned != pdPASS) {
+        Serial.println("Failed to create waterTankTask");
+    }
+
+    xReturned = xTaskCreate(touchTask, "touchTask", 2048, NULL, tskIDLE_PRIORITY, &touchTaskHandle);
+    if (xReturned != pdPASS) {
+        Serial.println("Failed to create touchTask");
+    }
+
+    // // // Don't want matrix screen saver to run yet
+    xReturned = xTaskCreate(matrixTask, "matrixTask", 8192, NULL, tskIDLE_PRIORITY, &matrixTaskHandle);
+    if (xReturned != pdPASS) {
+        Serial.println("Failed to create matrixTask");
+    }
+    xSemaphoreTake(matrixSemaphore, portMAX_DELAY);
 }
 
 void loop() {
-    // uint16_t t_x = 0, t_y = 0;      // touch screen coordinates
-    // int xw = tft.width()/2;         // xw, yh are middle of the screen
-    // int yh = tft.height()/2;
 
-    // bool pressed = tft.getTouch(&t_x, &t_y);  // true al pulsar
-
+    // vTaskDelay(4000);
+    // Serial.println("Resuming matrix task from loop");
+    // vTaskResume(matrixTaskHandle);
+    // vTaskDelay(10000);
     // // Comprueba si pulsas en zona de botón
     // for (uint8_t b = 0; b < totalButtonNumber; b++) {
     //     if (pressed && key[b].contains(t_x, t_y)) {
@@ -185,28 +345,8 @@ void loop() {
     // spr.pushSprite(50, 50);
     // delay(1000);
 
-    // Moving arrow left to right
-    for (int i = 10; i < 80; i+=5) {
-        spr.fillSprite(TFT_WHITE);          // Fill the Sprite 
-        for(int j = 0; j < 80; j+= 6) {     // Draw dotted line
-            spr.drawLine(j, 15, j+2, 15, TFT_GREY);
-        }
-        spr.fillTriangle(i, 15, i-10, 5, i-10, 25, TFT_RED);  // > small sideways triangle
-        spr.pushSprite(47, 70);
-        delay(100);
-    }
 
 
-    // Moving arrow right to left
-    for (int i = 75; i > 5; i-=5) {
-        spr.fillSprite(TFT_WHITE);          // Fill the Sprite 
-        for(int j = 0; j < 80; j+= 6) {     // Draw dotted line
-            spr.drawLine(j, 15, j+2, 15, TFT_GREY);
-        }
-        spr.fillTriangle(i, 15, i+10, 5, i+10, 25, TFT_RED);  // > small sideways triangle
-        spr.pushSprite(47, 70);
-        delay(100);
-    }
 
 
     // for (int i = 10; i < 80; i+=5) {
@@ -234,6 +374,279 @@ void loop() {
 }
 
 
+void sunTask(void *parameter) {
+    int i = 0;
+    int j = 0;
+    // int k = 0;
+
+    Serial.println("sunTask created");
+
+    for ( ;; ) {
+        // If already taken moving arrow will stop
+        xSemaphoreTake(sunSemaphore, portMAX_DELAY);
+
+        // Moving arrow left to right
+        for (i = 0; i < 100; i+=5) {
+            xSemaphoreTake(tftSemaphore, portMAX_DELAY);
+            sunSprite.fillSprite(TFT_WHITE);          // Fill the Sprite 
+            for(j = 0; j < 100; j+= 6) {     // Draw dotted line
+                sunSprite.drawLine(j, 10, j+2, 10, TFT_GREY);
+            }
+            sunSprite.fillTriangle(i, 10, i-10, 0, i-10, 20, TFT_GREEN_ENERGY);  // > small sideways triangle
+            sunSprite.pushSprite(45, 75);
+            xSemaphoreGive(tftSemaphore);
+            vTaskDelay(200 / portTICK_PERIOD_MS);
+        }
+
+        xSemaphoreGive(sunSemaphore);
+        vTaskDelay(10);
+        // How much stack are we using
+        // k++;
+        // if (k > 1) {
+        //     k = 0;
+        //     Serial.print("Sun Task Stack Left: ");
+        //     Serial.println(uxTaskGetStackHighWaterMark(NULL));
+        // }
+    }
+    vTaskDelete( NULL );
+}
+void gridTask(void *parameter) {
+    int i = 0;
+    int j = 0;
+    // int k = 0;
+
+    Serial.println("gridTask created");
+
+    for ( ;; ) {
+        // If already taken moving arrow will stop
+        xSemaphoreTake(gridSemaphore, portMAX_DELAY);
+
+        // Moving arrow right to left
+        for (i = 100; i > 0; i-=5) {
+            xSemaphoreTake(tftSemaphore, portMAX_DELAY);
+            gridSprite.fillSprite(TFT_WHITE);          // Fill the Sprite 
+            for(j = 0; j < 100; j+= 6) {     // Draw dotted line
+                gridSprite.drawLine(j, 10, j+2, 10, TFT_GREY);
+            }
+            gridSprite.fillTriangle(i, 10, i+10, 0, i+10, 20, TFT_RED);  // > small sideways triangle
+            gridSprite.pushSprite(195, 75);
+            xSemaphoreGive(tftSemaphore);
+            vTaskDelay(200 / portTICK_PERIOD_MS);
+        }
+
+        xSemaphoreGive(gridSemaphore);
+        vTaskDelay(10);
+
+        // How much stack are we using
+        // k++;
+        // if (k > 1) {
+        //     k = 0;
+        //     Serial.print("Grid Task Stack Left: ");
+        //     Serial.println(uxTaskGetStackHighWaterMark(NULL));
+        // }
+    }
+    vTaskDelete( NULL );
+}
+void waterTankTask(void *parameter) {
+    int i = 0;
+    int j = 0;
+    int k = 0;
+
+    Serial.println("waterTankTask created");
+
+    for ( ;; ) {
+        // If already taken moving arrow will stop
+        xSemaphoreTake(waterTankSemaphore, portMAX_DELAY);
+
+        // Moving arrow left to right
+        for (i = 0; i < 100; i+=5) {
+            xSemaphoreTake(tftSemaphore, portMAX_DELAY);
+            waterTankSprite.fillSprite(TFT_WHITE);          // Fill the Sprite 
+            for(j = 0; j < 100; j+= 6) {     // Draw dotted line
+                waterTankSprite.drawLine(j, 10, j+2, 10, TFT_GREY);
+            }
+            waterTankSprite.fillTriangle(i, 10, i-10, 0, i-10, 20, TFT_GREEN_ENERGY);  // > small sideways triangle
+            waterTankSprite.pushSprite(195, 125);
+            xSemaphoreGive(tftSemaphore);
+            vTaskDelay(200 / portTICK_PERIOD_MS);
+        }
+
+        xSemaphoreGive(waterTankSemaphore);
+        vTaskDelay(10);
+
+        // How much stack are we using
+        // k++;
+        // if (k > 1) {
+        //     k = 0;
+        //     Serial.print("Water Tank Task Stack Left: ");
+        //     Serial.println(uxTaskGetStackHighWaterMark(NULL));
+        // }
+    }
+    vTaskDelete( NULL );
+}
+void touchTask(void *parameter) {
+    int status = 0;
+    bool pressed = false;
+
+    Serial.println("touchTask created");
+   
+    for ( ;; ) {
+        xSemaphoreTake(tftSemaphore, portMAX_DELAY);
+        if (tft.getTouch(&t_x, &t_y))
+            pressed = true;
+        xSemaphoreGive(tftSemaphore);
+
+        if (pressed) {
+            Serial.print("Touch Task Stack Left: ");
+            Serial.println(uxTaskGetStackHighWaterMark(NULL));
+            pressed = false;
+            key[2].press(true);
+        }
+
+        if (key[2].justReleased()) {
+            key[2].press(false);
+            if (status == 0) {
+                status = 1;
+                Serial.println("A start screen saver");
+                // Take semaphores to stop tasks
+
+                if (xSemaphoreTake(sunSemaphore, portMAX_DELAY))    
+                    Serial.println("sunSemaphore taken");
+                if (xSemaphoreTake(gridSemaphore, portMAX_DELAY))
+                    Serial.println("gridSemaphore taken");
+                if (xSemaphoreTake(waterTankSemaphore, portMAX_DELAY)) 
+                    Serial.println("waterTankSemaphore taken");
+
+                xSemaphoreTake(tftSemaphore, portMAX_DELAY);
+                tft.fillScreen(TFT_BLACK);
+                xSemaphoreGive(tftSemaphore);
+
+                for (int j = 0; j < MAX_COL; j++) {
+                    for (int i = 0; i < MAX_CHR; i++) {
+                    chr_map[j][i] = 0;
+                    color_map[j][i] = 0;
+                    }
+
+                    color_map[j][0] = 63;
+                }
+
+                if (xSemaphoreGive(matrixSemaphore)) {
+                    Serial.println("matrix semaphore given");
+                }
+
+            } else if (status == 1) {
+                status = 0;
+                Serial.println("A stop screen saver");
+                xSemaphoreTake(matrixSemaphore, portMAX_DELAY);
+
+                // Redraw screen ready for graphics
+                tft.fillScreen(TFT_WHITE);
+
+                // Right (>) pointing triangle 400 = point x, 50 = point y, 390 = base x, 40 = base y top, 390 = base x, 60 = base y bottom
+                tft.fillTriangle(400, 50, 390, 40, 390, 60, TFT_TEAL);
+
+                // Left (<) pointing triangle 400 = point x, 80 = point y, 410 = base x, 70 = base y top, 410 = base x, 80 = base y bottom
+                tft.fillTriangle(400, 80, 410, 70, 410, 90, TFT_TEAL);
+
+                //This passes our buttons and draws them on the screen
+                drawRoundedSquare(btnA);
+                drawRoundedSquare(btnB);
+                drawRoundedSquare(btnC);
+
+                drawHouse(10, 10);
+                drawPylon();
+                drawSun(200, 200);
+
+                // Give semaphores back so tasks can continue
+                xSemaphoreGive(sunSemaphore);
+                xSemaphoreGive(gridSemaphore);
+                xSemaphoreGive(waterTankSemaphore);
+            }
+        }
+        if (key[2].justPressed()) {
+            key[2].press(false);
+            vTaskDelay(10); // debounce
+        }
+
+        vTaskDelay(100);
+        // How much stack are we using
+        // k++;
+        // if (k > 1) {
+        //     k = 0;
+        //     Serial.print("Grid Task Stack Left: ");
+        //     Serial.println(uxTaskGetStackHighWaterMark(NULL));
+        // }
+    }
+    vTaskDelete( NULL );
+}
+void matrixTask(void *parameter) {
+    Serial.println("matrixTaskCreated");
+
+    for ( ;; ) {
+        xSemaphoreTake(matrixSemaphore, portMAX_DELAY);
+        for (int j = 0; j < MAX_COL; j++) {
+            rnd_col_pos = random(1, MAX_COL);
+
+            rnd_x = rnd_col_pos * COL_WIDTH;
+
+            col_pos[rnd_col_pos - 1] = rnd_x; // save position
+
+            for (int i = 0; i < MAX_CHR; i++) { // 40
+                xSemaphoreTake(tftSemaphore, portMAX_DELAY);
+                tft.setTextColor(color_map[rnd_col_pos][i] << 5, TFT_GREEN); // Set the green character brightness
+
+                if (color_map[rnd_col_pos][i] == 63) {
+                    tft.setTextColor(TFT_RED, TFT_WHITE); // Draw white character
+                    Serial.println("set text colour!");
+                }
+
+                if ((chr_map[rnd_col_pos][i] == 0) || (color_map[rnd_col_pos][i] == 63)) {
+                    chr_map[rnd_col_pos][i] = random(31, 128);
+
+                    if (i > 1) {
+                        chr_map[rnd_col_pos][i - 1] = chr_map[rnd_col_pos][i];
+                        chr_map[rnd_col_pos][i - 2] = chr_map[rnd_col_pos][i];
+                    }
+                }
+
+                yPos += LINE_HEIGHT;
+
+                tft.drawChar(chr_map[rnd_col_pos][i], rnd_x, yPos, 1); // Draw the character
+                xSemaphoreGive(tftSemaphore);
+
+            }
+
+            yPos = 0;
+
+            for (int n = 0; n < MAX_CHR; n++) {
+            // chr_map[rnd_col_pos][n] = chr_map[rnd_col_pos][n + 1];
+                chr_map[rnd_col_pos][n] = chr_map[rnd_col_pos][n];
+            }
+            
+            for (int n = MAX_CHR; n > 0; n--) {
+                color_map[rnd_col_pos][n] = color_map[rnd_col_pos][n - 1];
+            }
+
+            chr_map[rnd_col_pos][0] = 0;
+
+            if (color_map[rnd_col_pos][0] > 20) {
+                color_map[rnd_col_pos][0] -= 3; // Rapid fade initially brightness values
+            }
+
+            if (color_map[rnd_col_pos][0] > 0) {
+                color_map[rnd_col_pos][0] -= 1; // Slow fade later
+            }
+
+            if ((random(20) == 1) && (j < MAX_COL_DOT6)) { // MAX_COL * 0.6
+                color_map[rnd_col_pos][0] = 63; // ~1 in 20 probability of a new character
+            }
+        }        
+
+        xSemaphoreGive(matrixSemaphore);
+        vTaskDelay(10);
+    }
+    vTaskDelete( NULL );
+}
 /**
  * @brief Calibrate the touch screen
  * 
@@ -385,6 +798,21 @@ void showMessage(String msg) {
   tft.setTextDatum(td); // Restore old datum
 }
 
+//This function will take a RoundedSquare struct and use these variables to display data
+//It will save us more code the more elements we add
+void drawRoundedSquare(RoundedSquare toDraw) {
+	tft.fillRoundRect(
+		toDraw.xStart,
+		toDraw.yStart,
+		toDraw.width, 
+		toDraw.height, 
+		toDraw.cornerRadius,
+		toDraw.color
+	);
+
+    tft.setTextColor(TFT_WHITE);
+    tft.drawString("Log", toDraw.xStart + 5, toDraw.yStart + 5, 2);
+}
 
 /**
  * @brief Draw a house where xy is the bottom left of the house
@@ -411,34 +839,19 @@ void drawPylon(void) {
     
 }
 
-void drawSun(int x, int y) {
-    int scale = 4;
-    int offset = 0;
-
-
-    scale = scale * 1.5;
-    addSun(x, y + offset, scale, true, TFT_RED);
-}
-
 /**
  * @brief Display the sun
  * 
  * @param x Display x coordinates
  * @param y Display y coordinates
- * @param scale Radius of the circle of the sun
- * @param icon_size Large or small icon
- * @param icon_color Icon colour, red during the day time
  */
-void addSun(int x, int y, int scale, boolean icon_size, uint16_t icon_color) {
+void drawSun(int x, int y) {
+    int scale = 4 * 1.5;
+
     int linesize = 3;
     int dxo, dyo, dxi, dyi;
 
-    // if (icon_size == small_icon) {
-    //     linesize = 1;
-    // }
-
-    tft.fillCircle(x, y, scale, icon_color);
-    tft.fillCircle(x, y, scale - linesize, TFT_RED);
+    tft.drawCircle(x, y, scale, TFT_RED);
 
     for (float i = 0; i < 360; i = i + 45) {
         dxo = 2.2 * scale * cos((i - 90) * 3.14 / 180);
@@ -446,29 +859,113 @@ void addSun(int x, int y, int scale, boolean icon_size, uint16_t icon_color) {
         dyo = 2.2 * scale * sin((i - 90) * 3.14 / 180);
         dyi = dyo * 0.6;
         if (i == 0 || i == 180) {
-            tft.drawLine(dxo + x - 1, dyo + y, dxi + x - 1, dyi + y, TFT_BLACK);
-            // if (icon_size == large_icon) {
-                tft.drawLine(dxo + x + 0, dyo + y, dxi + x + 0, dyi + y, TFT_BLACK);
-                tft.drawLine(dxo + x + 1, dyo + y, dxi + x + 1, dyi + y, TFT_BLACK);
-            // }
+            tft.drawLine(dxo + x - 1, dyo + y, dxi + x - 1, dyi + y, TFT_RED);
+            tft.drawLine(dxo + x + 0, dyo + y, dxi + x + 0, dyi + y, TFT_RED);
+            tft.drawLine(dxo + x + 1, dyo + y, dxi + x + 1, dyi + y, TFT_RED);
         }
         if (i == 90 || i == 270) {
-            tft.drawLine(dxo + x, dyo + y - 1, dxi + x, dyi + y - 1, TFT_BLACK);
-            // if (icon_size == large_icon) {
-                tft.drawLine(dxo + x, dyo + y + 0, dxi + x, dyi + y + 0, TFT_BLACK);
-                tft.drawLine(dxo + x, dyo + y + 1, dxi + x, dyi + y + 1, TFT_BLACK);
-            // }
+            tft.drawLine(dxo + x, dyo + y - 1, dxi + x, dyi + y - 1, TFT_RED);
+            tft.drawLine(dxo + x, dyo + y + 0, dxi + x, dyi + y + 0, TFT_RED);
+            tft.drawLine(dxo + x, dyo + y + 1, dxi + x, dyi + y + 1, TFT_RED);
         }
         if (i == 45 || i == 135 || i == 225 || i == 315) {
-            tft.drawLine(dxo + x - 1, dyo + y, dxi + x - 1, dyi + y, TFT_BLACK);
-            // if (icon_size == large_icon) {
-                tft.drawLine(dxo + x + 0, dyo + y, dxi + x + 0, dyi + y, TFT_BLACK);
-                tft.drawLine(dxo + x + 1, dyo + y, dxi + x + 1, dyi + y, TFT_BLACK);
-            // }
+            tft.drawLine(dxo + x - 1, dyo + y, dxi + x - 1, dyi + y, TFT_RED);
+            tft.drawLine(dxo + x + 0, dyo + y, dxi + x + 0, dyi + y, TFT_RED);
+            tft.drawLine(dxo + x + 1, dyo + y, dxi + x + 1, dyi + y, TFT_RED);
         }
     }
 }
 
-// Draw Sun
 // Draw iBoost
 // Draw water tank and shower
+
+// void print_stats(void)
+// {
+//     char *str = (char *)malloc(sizeof(char) * 2000);
+//     memset(str, 0, 2000);
+//     char *pcWriteBuffer = str;
+ 
+//     TaskStatus_t *pxTaskStatusArray;
+ 
+//     volatile UBaseType_t uxArraySize, x;
+//     unsigned long ulStatsAsPercentage;
+//     uint32_t ulTotalRunTime;
+ 
+//    /* Make sure the write buffer does not contain a string. */
+//    *pcWriteBuffer = 0x00;
+ 
+//    /* Take a snapshot of the number of tasks in case it changes while this
+//    function is executing. */
+//    uxArraySize = uxTaskGetNumberOfTasks();
+ 
+//    /* Allocate a TaskStatus_t structure for each task.  An array could be
+//    allocated statically at compile time. */
+//    Serial.printf("sizeof TaskStatus_t: %d\n", sizeof(TaskStatus_t));
+//    pxTaskStatusArray = (TaskStatus_t*)pvPortMalloc( uxArraySize * sizeof(TaskStatus_t));
+//    memset(pxTaskStatusArray, 0, uxArraySize * sizeof(TaskStatus_t));
+ 
+//    if( pxTaskStatusArray != NULL )
+//    {
+//       /* Generate raw status information about each task. */
+//       Serial.printf("Array size before: %d\n", uxArraySize);
+//       uxArraySize = uxTaskGetSystemState( pxTaskStatusArray,
+//                                  uxArraySize,
+//                                  &ulTotalRunTime );
+//       Serial.printf("Array size after: %d\n", uxArraySize);
+//       Serial.printf("Total runtime: %d\n", ulTotalRunTime);
+ 
+//       /* For percentage calculations. */
+//       ulTotalRunTime /= 100UL;
+ 
+//       /* Avoid divide by zero errors. */
+//       if( ulTotalRunTime > 0 )
+//       {
+//          /* For each populated position in the pxTaskStatusArray array,
+//          format the raw data as human readable ASCII data. */
+//          Serial.printf("  name        runtime      pct     core         prio\n");
+//          for( int x = 0; x < uxArraySize; x++ )
+//          {
+//             TaskStatus_t *taskStatus;
+//             void *tmp = &pxTaskStatusArray[x];
+//             void *hmm = tmp + (4 * x);
+//             taskStatus = (TaskStatus_t*)hmm;
+ 
+//                 // Serial.printf("Name: %.5s, ulRunTimeCounter: %d\n", taskStatus->pcTaskName , taskStatus->ulRunTimeCounter);
+//             /* What percentage of the total run time has the task used?
+//             This will always be rounded down to the nearest integer.
+//             ulTotalRunTimeDiv100 has already been divided by 100. */
+//             ulStatsAsPercentage =
+//                   taskStatus->ulRunTimeCounter / ulTotalRunTime;
+ 
+//             if( ulStatsAsPercentage > 0UL )
+//             {
+//                sprintf( pcWriteBuffer, "%30s %10lu %10lu%% %5d %5d\n",
+//                                  taskStatus->pcTaskName,
+//                                  taskStatus->ulRunTimeCounter,
+//                                  ulStatsAsPercentage,
+//                                 *((int *)(&taskStatus->usStackHighWaterMark)+1),
+//                                 taskStatus->uxBasePriority);
+//             }
+//             else
+//             {
+//                /* If the percentage is zero here then the task has
+//                consumed less than 1% of the total run time. */
+//                sprintf( pcWriteBuffer, "%30s %10lu %10s  %5d %5d\n",
+//                                  taskStatus->pcTaskName,
+//                                  taskStatus->ulRunTimeCounter,
+//                                  "<1%",
+//                                  *((uint32_t *)(&taskStatus->usStackHighWaterMark)+1),
+//                                  taskStatus->uxBasePriority);
+//             }
+ 
+//             pcWriteBuffer += strlen( ( char * ) pcWriteBuffer );
+//             // Serial.printf("len: %d, idx: %d\n", pcWriteBuffer - str, x);
+//          }
+//          Serial.print(str);
+//       }
+ 
+//       /* The array is no longer needed, free the memory it consumes. */
+//       vPortFree( pxTaskStatusArray );
+//       free(str);
+//    }
+// }
