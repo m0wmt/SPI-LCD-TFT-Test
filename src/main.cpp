@@ -75,8 +75,8 @@ TFT_eSPI_Button key[totalButtonNumber];     // TFT_eSPI button class
 #define COL_WIDTH 8       // TEXT_WIDTH + 2
 
 #define MAX_CHR 35        // characters per line (tft.height() / LINE_HEIGHT);
-#define MAX_COL 53        // maximum number of columns (tft.width() / COL_WIDTH);
-#define MAX_COL_DOT6 31   // MAX_COL * 0.6
+#define MAX_COL 54        // maximum number of columns (tft.width() / COL_WIDTH);
+#define MAX_COL_DOT6 32   // MAX_COL * 0.6
 
 int col_pos[MAX_COL];
 
@@ -159,11 +159,9 @@ RoundedSquare btnC = {
 // Function defenitions
 void calibrateTouchScreen(void);
 void drawButtons(void);
-int convertRGBto565(byte rr, byte gg, byte bb);
-void drawX(int x, int y);
-void showMessage(String msg);
+void showMessage(String msg, int x, int y);
 void drawHouse(int x, int y);
-void drawPylon(void);
+void drawPylon(int x, int y);
 void drawSun(int x, int y);
 void matrix(void);
 void drawRoundedSquare(RoundedSquare toDraw);
@@ -190,7 +188,7 @@ void setup() {
     tft.setRotation(3);
     tft.pushImage(75, 75, 320, 170, (uint16_t *)img_logo);
 
-    delay(2000);
+    delay(1000);
 
     tft.setTextSize(2);
     tft.fillScreen(TFT_WHITE);
@@ -253,10 +251,11 @@ void setup() {
 	drawRoundedSquare(btnB);
 	drawRoundedSquare(btnC);
 
-    drawHouse(10, 10);
-    drawPylon();
-    drawSun(200, 200);
+    drawHouse(150, 100);
+    drawPylon(320, 100);
 
+    drawSun(200, 200);
+    
     tftSemaphore = xSemaphoreCreateBinary();
     xSemaphoreGive(tftSemaphore);
     animationSemaphore = xSemaphoreCreateBinary();
@@ -347,7 +346,7 @@ void animationTask(void *parameter) {
     int waterX = 194;
     int waterY = 125;
     int width = 90;    // Width of drawing space - width of arrow 
-    int step = 5;       // How far to move the triangle each iteration
+    int step = 3;       // How far to move the triangle each iteration
     int sunStartPosition = sunX;       // 
     int gridImportStartPosition = gridX;     //
     int gridExportStartPosition = gridX;     //
@@ -490,8 +489,8 @@ void touchTask(void *parameter) {
                 drawRoundedSquare(btnB);
                 drawRoundedSquare(btnC);
 
-                drawHouse(10, 10);
-                drawPylon();
+                drawHouse(150, 100);
+                drawPylon(320, 100);
                 drawSun(200, 200);
 
                 // Give semaphores back so tasks can continue
@@ -504,7 +503,7 @@ void touchTask(void *parameter) {
             vTaskDelay(10 / portTICK_PERIOD_MS); // debounce
         }
 
-        vTaskDelay(100 / portTICK_PERIOD_MS);
+        vTaskDelay(200 / portTICK_PERIOD_MS);
         // How much stack are we using
         // k++;
         // if (k > 1) {
@@ -521,6 +520,7 @@ void matrixTask(void *parameter) {
 
     for ( ;; ) {
         xSemaphoreTake(matrixSemaphore, portMAX_DELAY);
+                xSemaphoreTake(tftSemaphore, portMAX_DELAY);
         for (int j = 0; j < MAX_COL; j++) {
             rnd_col_pos = random(1, MAX_COL);
 
@@ -529,7 +529,6 @@ void matrixTask(void *parameter) {
             col_pos[rnd_col_pos - 1] = rnd_x; // save position
 
             for (int i = 0; i < MAX_CHR; i++) { // 40
-                xSemaphoreTake(tftSemaphore, portMAX_DELAY);
                 tft.setTextColor(color_map[rnd_col_pos][i] << 5, TFT_BLACK); // Set the green character brightness
 
                 if (color_map[rnd_col_pos][i] == 63) {
@@ -548,7 +547,6 @@ void matrixTask(void *parameter) {
                 yPos += LINE_HEIGHT;
 
                 tft.drawChar(chr_map[rnd_col_pos][i], rnd_x, yPos, 1); // Draw the character
-                xSemaphoreGive(tftSemaphore);
 
             }
 
@@ -578,8 +576,9 @@ void matrixTask(void *parameter) {
             }
         }        
 
+                xSemaphoreGive(tftSemaphore);
         xSemaphoreGive(matrixSemaphore);
-        vTaskDelay(50 / portTICK_PERIOD_MS);
+        vTaskDelay(150 / portTICK_PERIOD_MS);
     }
     vTaskDelete( NULL );
 }
@@ -679,9 +678,8 @@ void calibrateTouchScreen(void) {
 }
 
 void drawButtons(void) {
-    int defcolor = convertRGBto565(131, 131, 131);
     //tft.setRotation(1);
-    tft.fillScreen(defcolor);
+    tft.fillScreen(TFT_GREY);
     // Draw the keys
     tft.setFreeFont(LABEL1_FONT);
     char keyLabel[totalButtonNumber][8] = {"Solar", "iBoost", "Log" };
@@ -691,20 +689,6 @@ void drawButtons(void) {
     key[1].drawButton();
     key[2].initButton(&tft, 80, 190, 110, 60, TFT_BLACK, TFT_WHITE, TFT_BLUE, keyLabel[2] , 1 );
     key[2].drawButton();
-}
-
-//####################################################################################################
-// RGB 24 bits to RGB565 (16bits) conversion
-//####################################################################################################
-int convertRGBto565(byte rr, byte gg, byte bb) {
-    //reduz para 5 bits significativos
-    byte r = (byte) (rr >> 3);
-    //reduz para 6 bits significativos
-    byte g = (byte)(gg >> 2);
-    //reduz para 5 bits significativos
-    byte b = (byte)(bb >> 3);
-
-    return (int)((r << 11) | (g << 5) | b);
 }
 
 // =======================================================================================
@@ -718,18 +702,14 @@ void drawX(int x, int y) {
 
 
 // =======================================================================================
-// Show a message at the top of the screen
+// Show a message on the screen
 // =======================================================================================
-void showMessage(String msg) {
-  // Clear the screen areas
-  tft.fillRect(0, 0, tft.width(), 20, TFT_BLACK);
-  tft.fillRect(0, 20, tft.width(), tft.height()-20, TFT_WHITE);
-
-  uint8_t td = tft.getTextDatum(); // Get current datum
+void showMessage(String msg, int x, int y) {
+   uint8_t td = tft.getTextDatum(); // Get current datum
 
   tft.setTextDatum(TC_DATUM);      // Set new datum
 
-  tft.drawString(msg, tft.width()/2, 2, 1); // Message in font 2
+  tft.drawString(msg, x, y, 1); // Message in font 2
 
   tft.setTextDatum(td); // Restore old datum
 }
@@ -753,26 +733,72 @@ void drawRoundedSquare(RoundedSquare toDraw) {
 /**
  * @brief Draw a house where xy is the bottom left of the house
  * 
- * @param x 
- * @param y 
+ * @param x Bottom left x of house
+ * @param y Bottom left y of house
  */
 void drawHouse(int x, int y) {
-    tft.drawLine(150, 100, 186, 100, TFT_BLACK);      // Bottom
-    tft.drawLine(150, 100, 150, 70, TFT_BLACK);      // Left wall
-    tft.drawLine(186, 100, 186, 70, TFT_BLACK);      // Right wall
-    tft.drawLine(148, 72, 168, 55, TFT_BLACK);      // Left angled roof
-    tft.drawLine(188, 72, 168, 55, TFT_BLACK);      // Right angled roof
+    tft.drawLine(x, y, x+36, y, TFT_BLACK);      // Bottom
+    tft.drawLine(x, y, x, y-30, TFT_BLACK);      // Left wall
+    tft.drawLine(x+36, y, x+36, y-30, TFT_BLACK);      // Right wall
+    tft.drawLine(x-2, y-28, x+18, y-45, TFT_BLACK);      // Left angled roof
+    tft.drawLine(x+38, y-28, x+18, y-45, TFT_BLACK);      // Right angled roof
 
-    tft.drawRect(155, 72, 8, 8, TFT_BLACK);   // Left top window
-    tft.drawRect(173, 72, 8, 8, TFT_BLACK);   // Right top window
-    // tft.drawRect(155, 96, 8, 8, TFT_BLACK);   // Left bottom window
-    // tft.drawRect(174, 96, 8, 8, TFT_BLACK);   // Right bottom window
+    tft.drawRect(x+5, y-28, 8, 8, TFT_BLACK);   // Left top window
+    tft.drawRect(x+23, y-28, 8, 8, TFT_BLACK);   // Right top window
    
-    tft.drawRect(165, 87, 8, 13, TFT_BLACK);   // Door
+    tft.drawRect(x+15, y-13, 8, 13, TFT_BLACK);   // Door
 }
 
-void drawPylon(void) {
-    
+/**
+ * @brief Draw an electricity pylon
+ * 
+ * @param x Bottom left x position of pylon
+ * @param y Bottom left y position of pylon
+ */
+void drawPylon(int x, int y) {
+    tft.drawLine(x, y, x+5, y-25, TFT_BLACK);      // left foot
+    tft.drawLine(x+5, y-25, x+5, y-40, TFT_BLACK);      // left straight
+    tft.drawLine(x+5, y-40, x+10, y-50, TFT_BLACK);      // left top angle
+
+    tft.drawLine(x+20, y, x+15, y-25, TFT_BLACK);      // right foot
+    tft.drawLine(x+15, y-25, x+15, y-40, TFT_BLACK);      // right straight
+    tft.drawLine(x+15, y-40, x+10, y-50, TFT_BLACK);      // right top angle
+
+    // lines across starting at bottom
+    tft.drawLine(x+1, y-5, x+19, y-5, TFT_BLACK);      
+    tft.drawLine(x+3, y-15, x+18, y-15, TFT_BLACK);  
+
+    tft.drawLine(x-5, y-25, x+25, y-25, TFT_BLACK);    // bottom wider line across
+    tft.drawLine(x+5, y-30, x+15, y-30, TFT_BLACK);
+    tft.drawLine(x-5, y-25, x+5, y-30, TFT_BLACK);    // angle left
+    tft.drawLine(x+25, y-25, x+15, y-30, TFT_BLACK);    // angle right
+
+    tft.drawLine(x-5, y-35, x+25, y-35, TFT_BLACK);    // top wider line across
+    tft.drawLine(x+5, y-40, x+15, y-40, TFT_BLACK);
+    tft.drawLine(x-5, y-35, x+5, y-40, TFT_BLACK);    // angle left
+    tft.drawLine(x+25, y-35, x+15, y-40, TFT_BLACK);    // angle right
+
+    // cross sections starting at bottom
+    tft.drawLine(x+3, y-5, x+18, y-15, TFT_BLACK);
+    tft.drawLine(x+18, y-5, x+3, y-15, TFT_BLACK);
+
+    tft.drawLine(x+3, y-15, x+15, y-25, TFT_BLACK);
+    tft.drawLine(x+18, y-15, x+5, y-25, TFT_BLACK);
+
+    tft.drawLine(x+5, y-25, x+15, y-30, TFT_BLACK);
+    tft.drawLine(x+15, y-25, x+5, y-30, TFT_BLACK);
+
+    tft.drawLine(x+5, y-30, x+15, y-35, TFT_BLACK);
+    tft.drawLine(x+15, y-30, x+5, y-35, TFT_BLACK);
+
+    tft.drawLine(x+5, y-35, x+15, y-40, TFT_BLACK);
+    tft.drawLine(x+15, y-35, x+5, y-40, TFT_BLACK);
+
+    // dots at end of pylon
+    tft.drawLine(x-5, y-34, x-5, y-33, TFT_BLACK); // top left
+    tft.drawLine(x+25, y-34, x+25, y-33, TFT_BLACK); // top right
+    tft.drawLine(x-5, y-24, x-5, y-23, TFT_BLACK); // bottom left
+    tft.drawLine(x+25, y-24, x+25, y-23, TFT_BLACK); // bottom right
 }
 
 /**
