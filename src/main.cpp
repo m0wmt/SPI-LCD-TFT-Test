@@ -50,6 +50,10 @@ TFT_eSprite sunSprite = TFT_eSprite(&tft);    // Sprite object
 TFT_eSprite gridSprite = TFT_eSprite(&tft);    // Sprite object
 TFT_eSprite waterTankSprite = TFT_eSprite(&tft);    // Sprite object
 
+TFT_eSprite dottedLineSprite = TFT_eSprite(&tft);    // Sprite object
+TFT_eSprite rightArrowSprite = TFT_eSprite(&tft);    // Sprite object
+TFT_eSprite leftArrowSprite = TFT_eSprite(&tft);    // Sprite object
+
 // TFT specific defines
 #define TOUCH_CS 21             // Touch CS to PIN 21
 #define REPEAT_CAL false        // True if calibration is requested after reboot
@@ -87,21 +91,15 @@ int color;
 //
 
 // freeRTOS
-TaskHandle_t sunTaskHandle = NULL;
-TaskHandle_t gridTaskHandle = NULL;
-TaskHandle_t waterTankTaskHandle = NULL;
+TaskHandle_t animationTaskHandle = NULL;
 TaskHandle_t matrixTaskHandle = NULL;
 TaskHandle_t touchTaskHandle = NULL;
 
 SemaphoreHandle_t tftSemaphore;
-SemaphoreHandle_t sunSemaphore;
-SemaphoreHandle_t gridSemaphore;
-SemaphoreHandle_t waterTankSemaphore;
+SemaphoreHandle_t animationSemaphore;
 SemaphoreHandle_t matrixSemaphore;
 
-void sunTask(void *parameter);
-void gridTask(void *parameter);
-void waterTankTask(void *parameter);
+void animationTaskTask(void *parameter);
 void matrixTask(void *parameter);
 void touchTask(void *parameter);
 //
@@ -213,6 +211,28 @@ void setup() {
     waterTankSprite.setColorDepth(8);      // Create an 8bpp Sprite of 60x30 pixels
     waterTankSprite.createSprite(100, 20);  // 8bpp requires 64 * 30 = 1920 bytes
 
+    // Sprites for animations
+    dottedLineSprite.setColorDepth(8);
+    dottedLineSprite.createSprite(100, 20);
+    rightArrowSprite.setColorDepth(8);
+    rightArrowSprite.createSprite(10, 20);
+    leftArrowSprite.setColorDepth(8);
+    leftArrowSprite.createSprite(10, 20);
+
+    dottedLineSprite.fillSprite(TFT_WHITE);
+    rightArrowSprite.fillSprite(TFT_WHITE);
+    leftArrowSprite.fillSprite(TFT_WHITE);
+
+    for(int i = 0; i < 100; i += 6) {     // Draw dotted line
+        dottedLineSprite.drawLine(i, 10, i+2, 10, TFT_GREY);
+    }
+
+    rightArrowSprite.fillTriangle(10, 10, 0, 0, 0, 20, TFT_GREEN_ENERGY);  // > small right pointing sideways triangle
+    rightArrowSprite.pushSprite(200, 10);
+    leftArrowSprite.fillTriangle(0, 10, 10, 0, 10, 20, TFT_RED);  // > small left pointing sideways triangle
+    leftArrowSprite.pushSprite(200, 40);
+    // End of sprite animation creation
+
     // // vertical lines on screen to help with graphic placement
     // for (int i = 10; i < 480; i += 10) {
     //     tft.drawLine(i, 0, i, 320, TFT_BLUE);
@@ -239,28 +259,14 @@ void setup() {
 
     tftSemaphore = xSemaphoreCreateBinary();
     xSemaphoreGive(tftSemaphore);
-    sunSemaphore = xSemaphoreCreateBinary();
-    xSemaphoreGive(sunSemaphore);
-    gridSemaphore = xSemaphoreCreateBinary();
-    xSemaphoreGive(gridSemaphore);
-    waterTankSemaphore = xSemaphoreCreateBinary();
-    xSemaphoreGive(waterTankSemaphore);
+    animationSemaphore = xSemaphoreCreateBinary();
+    xSemaphoreGive(animationSemaphore);
     matrixSemaphore = xSemaphoreCreateBinary();
     xSemaphoreGive(matrixSemaphore);
 
-    xReturned = xTaskCreate(sunTask, "sunTask", 2048, NULL, tskIDLE_PRIORITY, &sunTaskHandle);
+    xReturned = xTaskCreate(animationTask, "animationTask", 2048, NULL, tskIDLE_PRIORITY, &animationTaskHandle);
     if (xReturned != pdPASS) {
-        Serial.println("Failed to create sunTask");
-    }
-
-    xReturned = xTaskCreate(gridTask, "gridTask", 2048, NULL, tskIDLE_PRIORITY, &gridTaskHandle);
-    if (xReturned != pdPASS) {
-        Serial.println("Failed to create gridTask");
-    }
-
-    xReturned = xTaskCreate(waterTankTask, "waterTankTask", 2048, NULL, tskIDLE_PRIORITY, &waterTankTaskHandle);
-    if (xReturned != pdPASS) {
-        Serial.println("Failed to create waterTankTask");
+        Serial.println("Failed to create animationTask");
     }
 
     xReturned = xTaskCreate(touchTask, "touchTask", 2048, NULL, tskIDLE_PRIORITY, &touchTaskHandle);
@@ -329,158 +335,90 @@ void loop() {
     //     Serial.println(t_y);
 
     //     delay(10); // evitar rebotes de pulsacion
-    // }
-
-    // showMessage("moving arrow");
-
-    // for(int i = 0; i < 90; i+= 6) {
-    //     tft.drawLine(i, 15, i+2, 15, TFT_GREY);
-    // }
-
-    // spr.fillSprite(TFT_WHITE); // Fill the Sprite 
-    // for(int i = 0; i < 90; i+= 6) {
-    //     spr.drawLine(i, 15, i+2, 15, TFT_GREY);
-    // }
-    // spr.fillTriangle(20, 15, 10, 5, 10, 25, TFT_RED);  // > small sideways triangle
-    // spr.pushSprite(50, 50);
-    // delay(1000);
-
-
-
-
-
-    // for (int i = 10; i < 80; i+=5) {
-    //     spr.fillSprite(TFT_WHITE);          // Fill the Sprite 
-    //     for(int j = 0; j < 80; j+= 6) {     // Draw dotted line
-    //         spr.drawLine(j, 15, j+2, 15, TFT_GREY);
-    //     }
-    //     spr.fillTriangle(i, 15, i-12, 3, i-12, 28, TFT_RED);  // > larger sideways triangle
-    //     spr.pushSprite(50, 50);
-    //     delay(100);
-    // }
-
-    // move sprit arrow right
-    // spr.fillSprite(TFT_WHITE); // Fill the Sprite 
-    // for(int i = 0; i < 90; i+= 6) {
-    //     spr.drawLine(i, 15, i+2, 15, TFT_GREY);
-    // }
-    // spr.fillTriangle(25, 15, 15, 5, 15, 25, TFT_RED);  // > small sideways triangle
-    // spr.pushSprite(50, 50);
-    // delay(1000);
-  
-
-  //spr.deleteSprite();
-    
+    // }    
 }
 
 
-void sunTask(void *parameter) {
-    int i = 0;
-    int j = 0;
-    // int k = 0;
+void animationTask(void *parameter) {
+    int sunX = 45;      // Sun x y
+    int sunY = 75;
+    int gridX = 194;
+    int gridY = 75;
+    int waterX = 194;
+    int waterY = 125;
+    int width = 90;    // Width of drawing space - width of arrow 
+    int step = 5;       // How far to move the triangle each iteration
+    int sunStartPosition = sunX;       // 
+    int gridImportStartPosition = gridX;     //
+    int gridExportStartPosition = gridX;     //
+    int waterStartPosition = waterX;     //
+    int sunArrow = sunStartPosition;                // solar generation arrow start point 
+    int gridImportArrow = gridImportStartPosition + width;      // grid import arrow start point
+    int gridExportArrow = gridExportStartPosition;      // grid export arrow start point
+    int waterArrow = waterStartPosition;            // water heating arrow start point 
 
-    Serial.println("sunTask created");
+    bool solarGeneration = true;
+    bool gridImport = false;
+    bool gridExport = true;
+    bool waterHeating = true;
 
-    for ( ;; ) {
-        // If already taken moving arrow will stop
-        xSemaphoreTake(sunSemaphore, portMAX_DELAY);
-
-        // Moving arrow left to right
-        for (i = 0; i < 100; i+=5) {
-            xSemaphoreTake(tftSemaphore, portMAX_DELAY);
-            sunSprite.fillSprite(TFT_WHITE);          // Fill the Sprite 
-            for(j = 0; j < 100; j+= 6) {     // Draw dotted line
-                sunSprite.drawLine(j, 10, j+2, 10, TFT_GREY);
-            }
-            sunSprite.fillTriangle(i, 10, i-10, 0, i-10, 20, TFT_GREEN_ENERGY);  // > small sideways triangle
-            sunSprite.pushSprite(45, 75);
-            xSemaphoreGive(tftSemaphore);
-            vTaskDelay(200 / portTICK_PERIOD_MS);
-        }
-
-        xSemaphoreGive(sunSemaphore);
-        vTaskDelay(10);
-        // How much stack are we using
-        // k++;
-        // if (k > 1) {
-        //     k = 0;
-        //     Serial.print("Sun Task Stack Left: ");
-        //     Serial.println(uxTaskGetStackHighWaterMark(NULL));
-        // }
-    }
-    vTaskDelete( NULL );
-}
-void gridTask(void *parameter) {
-    int i = 0;
-    int j = 0;
-    // int k = 0;
-
-    Serial.println("gridTask created");
+    int n;
 
     for ( ;; ) {
         // If already taken moving arrow will stop
-        xSemaphoreTake(gridSemaphore, portMAX_DELAY);
-
-        // Moving arrow right to left
-        for (i = 100; i > 0; i-=5) {
-            xSemaphoreTake(tftSemaphore, portMAX_DELAY);
-            gridSprite.fillSprite(TFT_WHITE);          // Fill the Sprite 
-            for(j = 0; j < 100; j+= 6) {     // Draw dotted line
-                gridSprite.drawLine(j, 10, j+2, 10, TFT_GREY);
-            }
-            gridSprite.fillTriangle(i, 10, i+10, 0, i+10, 20, TFT_RED);  // > small sideways triangle
-            gridSprite.pushSprite(195, 75);
-            xSemaphoreGive(tftSemaphore);
-            vTaskDelay(200 / portTICK_PERIOD_MS);
+        xSemaphoreTake(animationSemaphore, portMAX_DELAY);
+        xSemaphoreTake(tftSemaphore, portMAX_DELAY);
+        
+        // Solar generation arrow
+        if (solarGeneration) {
+            dottedLineSprite.pushSprite(sunX, sunY);
+            rightArrowSprite.pushSprite(sunArrow, sunY);
+            sunArrow += step;
+            if (sunArrow > (width + sunStartPosition)) {
+                sunArrow = sunStartPosition;
+            } 
         }
 
-        xSemaphoreGive(gridSemaphore);
-        vTaskDelay(10);
-
-        // How much stack are we using
-        // k++;
-        // if (k > 1) {
-        //     k = 0;
-        //     Serial.print("Grid Task Stack Left: ");
-        //     Serial.println(uxTaskGetStackHighWaterMark(NULL));
-        // }
-    }
-    vTaskDelete( NULL );
-}
-void waterTankTask(void *parameter) {
-    int i = 0;
-    int j = 0;
-    int k = 0;
-
-    Serial.println("waterTankTask created");
-
-    for ( ;; ) {
-        // If already taken moving arrow will stop
-        xSemaphoreTake(waterTankSemaphore, portMAX_DELAY);
-
-        // Moving arrow left to right
-        for (i = 0; i < 100; i+=5) {
-            xSemaphoreTake(tftSemaphore, portMAX_DELAY);
-            waterTankSprite.fillSprite(TFT_WHITE);          // Fill the Sprite 
-            for(j = 0; j < 100; j+= 6) {     // Draw dotted line
-                waterTankSprite.drawLine(j, 10, j+2, 10, TFT_GREY);
-            }
-            waterTankSprite.fillTriangle(i, 10, i-10, 0, i-10, 20, TFT_GREEN_ENERGY);  // > small sideways triangle
-            waterTankSprite.pushSprite(195, 125);
-            xSemaphoreGive(tftSemaphore);
-            vTaskDelay(200 / portTICK_PERIOD_MS);
+        // Grid import arrow
+        if (gridImport) {
+            dottedLineSprite.pushSprite(gridX, gridY);
+            leftArrowSprite.pushSprite(gridImportArrow, gridY);
+            gridImportArrow -= step;
+            if (gridImportArrow < gridImportStartPosition) {
+                gridImportArrow = gridImportStartPosition + width;
+            } 
         }
 
-        xSemaphoreGive(waterTankSemaphore);
-        vTaskDelay(10);
+        // Grid export arrow
+        if (gridExport) {
+            dottedLineSprite.pushSprite(gridX, gridY);
+            rightArrowSprite.pushSprite(gridExportArrow, gridY);
+            gridExportArrow += step;
+            if (gridExportArrow > gridExportStartPosition + width) {
+                gridExportArrow = gridExportStartPosition;
+            } 
+        }
 
+        // Water tank heating by solar arrow
+        if (waterHeating) {
+            dottedLineSprite.pushSprite(waterX, waterY);
+            rightArrowSprite.pushSprite(waterArrow, waterY);
+            waterArrow += step;
+            if (waterArrow > waterStartPosition + width) {
+                waterArrow = waterStartPosition;
+            } 
+        }
+
+        xSemaphoreGive(tftSemaphore);
+        xSemaphoreGive(animationSemaphore);
+        vTaskDelay(150 / portTICK_PERIOD_MS);
         // How much stack are we using
-        // k++;
-        // if (k > 1) {
-        //     k = 0;
-        //     Serial.print("Water Tank Task Stack Left: ");
-        //     Serial.println(uxTaskGetStackHighWaterMark(NULL));
-        // }
+        n++;
+        if (n > 20) {
+            n = 0;
+            Serial.print("Annimation Task Stack Left: ");
+            Serial.println(uxTaskGetStackHighWaterMark(NULL));
+        }
     }
     vTaskDelete( NULL );
 }
