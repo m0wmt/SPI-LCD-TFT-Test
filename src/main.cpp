@@ -46,13 +46,14 @@
 */
 
 TFT_eSPI tft = TFT_eSPI();              // TFT object
-TFT_eSprite sunSprite = TFT_eSprite(&tft);    // Sprite object
-TFT_eSprite gridSprite = TFT_eSprite(&tft);    // Sprite object
-TFT_eSprite waterTankSprite = TFT_eSprite(&tft);    // Sprite object
+// TFT_eSprite sunSprite = TFT_eSprite(&tft);    // Sprite object
+// TFT_eSprite gridSprite = TFT_eSprite(&tft);    // Sprite object
+// TFT_eSprite waterTankSprite = TFT_eSprite(&tft);    // Sprite object
 
-TFT_eSprite dottedLineSprite = TFT_eSprite(&tft);    // Sprite object
+TFT_eSprite lineSprite = TFT_eSprite(&tft);    // Sprite object
 TFT_eSprite rightArrowSprite = TFT_eSprite(&tft);    // Sprite object
 TFT_eSprite leftArrowSprite = TFT_eSprite(&tft);    // Sprite object
+TFT_eSprite whiteArrowSprite = TFT_eSprite(&tft);    // Sprite object
 
 // TFT specific defines
 #define TOUCH_CS 21             // Touch CS to PIN 21
@@ -157,12 +158,14 @@ RoundedSquare btnC = {
 //
 
 // Function defenitions
+void initialiseScreen(void);
 void calibrateTouchScreen(void);
 void drawButtons(void);
 void showMessage(String msg, int x, int y);
 void drawHouse(int x, int y);
 void drawPylon(int x, int y);
 void drawSun(int x, int y);
+void drawWaterTank(int x, int y);
 void matrix(void);
 void drawRoundedSquare(RoundedSquare toDraw);
 
@@ -191,44 +194,48 @@ void setup() {
     delay(1000);
 
     tft.setTextSize(2);
-    tft.fillScreen(TFT_WHITE);
 
     calibrateTouchScreen();
 
     Serial.println("Initialisation complete");
 
-    tft.setTextColor(TFT_BLACK, TFT_WHITE);
 
     //drawButtons();
 
     // Create the Sprites
-    sunSprite.setColorDepth(8);      // Create an 8bpp Sprite of 60x30 pixels
-    sunSprite.createSprite(100, 20);  // 8bpp requires 64 * 30 = 1920 bytes
-    gridSprite.setColorDepth(8);      // Create an 8bpp Sprite of 60x30 pixels
-    gridSprite.createSprite(100, 20);  // 8bpp requires 64 * 30 = 1920 bytes
-    waterTankSprite.setColorDepth(8);      // Create an 8bpp Sprite of 60x30 pixels
-    waterTankSprite.createSprite(100, 20);  // 8bpp requires 64 * 30 = 1920 bytes
+    // sunSprite.setColorDepth(8);      // Create an 8bpp Sprite of 60x30 pixels
+    // sunSprite.createSprite(100, 20);  // 8bpp requires 64 * 30 = 1920 bytes
+    // gridSprite.setColorDepth(8);      // Create an 8bpp Sprite of 60x30 pixels
+    // gridSprite.createSprite(100, 20);  // 8bpp requires 64 * 30 = 1920 bytes
+    // waterTankSprite.setColorDepth(8);      // Create an 8bpp Sprite of 60x30 pixels
+    // waterTankSprite.createSprite(100, 20);  // 8bpp requires 64 * 30 = 1920 bytes
 
     // Sprites for animations
-    dottedLineSprite.setColorDepth(8);
-    dottedLineSprite.createSprite(100, 20);
+    lineSprite.setColorDepth(8);
+    lineSprite.createSprite(96, 20);
     rightArrowSprite.setColorDepth(8);
-    rightArrowSprite.createSprite(10, 20);
+    rightArrowSprite.createSprite(11, 20);
     leftArrowSprite.setColorDepth(8);
-    leftArrowSprite.createSprite(10, 20);
-
-    dottedLineSprite.fillSprite(TFT_WHITE);
+    leftArrowSprite.createSprite(11, 20);
+    whiteArrowSprite.setColorDepth(8);
+    whiteArrowSprite.createSprite(11, 20);
+    lineSprite.fillSprite(TFT_WHITE);
     rightArrowSprite.fillSprite(TFT_WHITE);
     leftArrowSprite.fillSprite(TFT_WHITE);
+    whiteArrowSprite.fillSprite(TFT_WHITE);
 
-    for(int i = 0; i < 100; i += 6) {     // Draw dotted line
-        dottedLineSprite.drawLine(i, 10, i+2, 10, TFT_GREY);
-    }
+    lineSprite.drawLine(0, 10, 95, 10, TFT_LIGHTGREY);
 
-    rightArrowSprite.fillTriangle(10, 10, 0, 0, 0, 20, TFT_GREEN_ENERGY);  // > small right pointing sideways triangle
-    rightArrowSprite.pushSprite(200, 10);
-    leftArrowSprite.fillTriangle(0, 10, 10, 0, 10, 20, TFT_RED);  // > small left pointing sideways triangle
-    leftArrowSprite.pushSprite(200, 40);
+    rightArrowSprite.fillTriangle(10, 10, 1, 0, 1, 20, TFT_GREEN_ENERGY);  // > small right pointing sideways triangle
+    rightArrowSprite.drawPixel(0, 10, TFT_LIGHTGREY);    
+    leftArrowSprite.fillTriangle(0, 10, 9, 0, 9, 20, TFT_RED);  // > small left pointing sideways triangle
+    leftArrowSprite.drawPixel(10, 10, TFT_LIGHTGREY);    
+
+    whiteArrowSprite.drawLine(0, 10, 10, 10, TFT_LIGHTGREY);
+
+    // leftArrowSprite[1].fillTriangle(0, 10, 10, 0, 10, 20, TFT_RED);  // > small left pointing sideways triangle with line behind
+    // leftArrowSprite[1].drawPixel(11, 10, TFT_GREY);  // > small left pointing sideways triangle with line behind
+    // leftArrowSprite[0].pushSprite(200, 40);
     // End of sprite animation creation
 
     // // vertical lines on screen to help with graphic placement
@@ -240,21 +247,7 @@ void setup() {
     //     tft.drawLine(0, i, 480, i, TFT_BLUE);
     // }
 
-    // Right (>) pointing triangle 400 = point x, 50 = point y, 390 = base x, 40 = base y top, 390 = base x, 60 = base y bottom
-    tft.fillTriangle(400, 50, 390, 40, 390, 60, TFT_BLACK);
-
-    // Left (<) pointing triangle 400 = point x, 80 = point y, 410 = base x, 70 = base y top, 410 = base x, 80 = base y bottom
-    tft.fillTriangle(400, 80, 410, 70, 410, 90, TFT_BLACK);
-
-    //This passes our buttons and draws them on the screen
-	drawRoundedSquare(btnA);
-	drawRoundedSquare(btnB);
-	drawRoundedSquare(btnC);
-
-    drawHouse(150, 100);
-    drawPylon(320, 100);
-
-    drawSun(200, 200);
+    initialiseScreen(); 
     
     tftSemaphore = xSemaphoreCreateBinary();
     xSemaphoreGive(tftSemaphore);
@@ -339,14 +332,14 @@ void loop() {
 
 
 void animationTask(void *parameter) {
-    int sunX = 45;      // Sun x y
-    int sunY = 75;
-    int gridX = 194;
-    int gridY = 75;
-    int waterX = 194;
-    int waterY = 125;
-    int width = 90;    // Width of drawing space - width of arrow 
-    int step = 3;       // How far to move the triangle each iteration
+    int sunX = 100;      // Sun x y
+    int sunY = 105;
+    int gridX = 260;
+    int gridY = 105;
+    int waterX = 105;
+    int waterY = 170;
+    int width = 85;    // Width of drawing space minus width of arrow 
+    int step = 1;       // How far to move the triangle each iteration
     int sunStartPosition = sunX;       // 
     int gridImportStartPosition = gridX;     //
     int gridExportStartPosition = gridX;     //
@@ -357,11 +350,17 @@ void animationTask(void *parameter) {
     int waterArrow = waterStartPosition;            // water heating arrow start point 
 
     bool solarGeneration = true;
-    bool gridImport = false;
-    bool gridExport = true;
+    bool gridImport = true;
+    bool gridExport = false;
     bool waterHeating = true;
 
     // int n;
+    xSemaphoreTake(tftSemaphore, portMAX_DELAY);
+    lineSprite.pushSprite(sunX, sunY);
+    lineSprite.pushSprite(gridX, gridY);
+    lineSprite.pushSprite(waterX, waterY);
+    xSemaphoreGive(tftSemaphore);
+
 
     for ( ;; ) {
         // If already taken moving arrow will stop
@@ -370,47 +369,48 @@ void animationTask(void *parameter) {
         
         // Solar generation arrow
         if (solarGeneration) {
-            dottedLineSprite.pushSprite(sunX, sunY);
             rightArrowSprite.pushSprite(sunArrow, sunY);
             sunArrow += step;
             if (sunArrow > (width + sunStartPosition)) {
+                whiteArrowSprite.pushSprite(sunArrow-step, sunY);
                 sunArrow = sunStartPosition;
             } 
         }
 
         // Grid import arrow
         if (gridImport) {
-            dottedLineSprite.pushSprite(gridX, gridY);
             leftArrowSprite.pushSprite(gridImportArrow, gridY);
             gridImportArrow -= step;
             if (gridImportArrow < gridImportStartPosition) {
+                whiteArrowSprite.pushSprite(gridImportArrow+step, gridY);
                 gridImportArrow = gridImportStartPosition + width;
             } 
         }
 
         // Grid export arrow
         if (gridExport) {
-            dottedLineSprite.pushSprite(gridX, gridY);
             rightArrowSprite.pushSprite(gridExportArrow, gridY);
             gridExportArrow += step;
             if (gridExportArrow > gridExportStartPosition + width) {
+                whiteArrowSprite.pushSprite(gridExportArrow-step, gridY);
                 gridExportArrow = gridExportStartPosition;
             } 
         }
 
         // Water tank heating by solar arrow
         if (waterHeating) {
-            dottedLineSprite.pushSprite(waterX, waterY);
+            //dottedLineSprite.pushSprite(waterX, waterY);
             rightArrowSprite.pushSprite(waterArrow, waterY);
             waterArrow += step;
             if (waterArrow > waterStartPosition + width) {
+                whiteArrowSprite.pushSprite(waterArrow-step, waterY);
                 waterArrow = waterStartPosition;
             } 
         }
 
         xSemaphoreGive(tftSemaphore);
         xSemaphoreGive(animationSemaphore);
-        vTaskDelay(150 / portTICK_PERIOD_MS);
+        vTaskDelay(40 / portTICK_PERIOD_MS);
         // How much stack are we using
         // n++;
         // if (n > 20) {
@@ -475,23 +475,7 @@ void touchTask(void *parameter) {
                 xSemaphoreTake(matrixSemaphore, portMAX_DELAY);
                 xSemaphoreTake(tftSemaphore, portMAX_DELAY);
 
-                // Redraw screen ready for graphics
-                tft.fillScreen(TFT_WHITE);
-
-                // Right (>) pointing triangle 400 = point x, 50 = point y, 390 = base x, 40 = base y top, 390 = base x, 60 = base y bottom
-                tft.fillTriangle(400, 50, 390, 40, 390, 60, TFT_TEAL);
-
-                // Left (<) pointing triangle 400 = point x, 80 = point y, 410 = base x, 70 = base y top, 410 = base x, 80 = base y bottom
-                tft.fillTriangle(400, 80, 410, 70, 410, 90, TFT_TEAL);
-
-                //This passes our buttons and draws them on the screen
-                drawRoundedSquare(btnA);
-                drawRoundedSquare(btnB);
-                drawRoundedSquare(btnC);
-
-                drawHouse(150, 100);
-                drawPylon(320, 100);
-                drawSun(200, 200);
+                initialiseScreen();
 
                 // Give semaphores back so tasks can continue
                 xSemaphoreGive(tftSemaphore);
@@ -582,6 +566,67 @@ void matrixTask(void *parameter) {
     }
     vTaskDelete( NULL );
 }
+
+/**
+ * @brief Set up the screen. This will be called at program startup and when the screen
+ * saver ends.  This will draw all static elements, i.e. house, sun, pylon, hot water
+ * tank, menu buttons etc.
+ */
+void initialiseScreen(void) {
+    tft.fillScreen(TFT_WHITE);
+
+    // Define area at top of screen for date, time etc.
+    tft.fillRect(0, 20, 480, 2, TFT_BLACK);
+    tft.fillRect(0, 0, 480, 20, TFT_SKYBLUE);
+    // Right (>) pointing triangle 400 = point x, 50 = point y, 390 = base x, 40 = base y top, 390 = base x, 60 = base y bottom
+    // tft.fillTriangle(400, 50, 390, 40, 390, 60, TFT_BLACK);
+
+    // Left (<) pointing triangle 400 = point x, 80 = point y, 410 = base x, 70 = base y top, 410 = base x, 80 = base y bottom
+    // tft.fillTriangle(400, 80, 410, 70, 410, 90, TFT_BLACK);
+
+    //This passes our buttons and draws them on the screen
+	drawRoundedSquare(btnA);
+	drawRoundedSquare(btnB);
+	drawRoundedSquare(btnC);
+
+    drawSun(65, 145);
+    drawHouse(210, 130);
+    drawPylon(380, 130);
+    drawWaterTank(210, 160);
+
+    tft.setCursor(90, 3, 1);   // position and font
+    tft.setTextColor(TFT_BLACK, TFT_SKYBLUE);
+    tft.setTextSize(2);
+    tft.print("House Electricity Monitor");
+
+    // Demo values
+    // Solar generation now
+    tft.setCursor(110, 85, 2);   // position and font
+    tft.setTextColor(TFT_BLACK, TFT_WHITE);
+    tft.setTextSize(1);
+    tft.print("2.34 kW");
+
+    // Electricity import/export values
+    tft.setCursor(280, 85, 2);   // position and font
+    tft.print("1.67 kW");
+
+    // Total solar generated today
+    tft.setCursor(100, 45, 4);   // position and font
+    tft.setTextSize(1);
+    tft.print("12.67 kWh");
+
+    // Water import to heat water
+    tft.setCursor(110, 150, 2);   // position and font
+    tft.setTextSize(1);
+    tft.print("0.89 kW");
+
+    // Total saved today to heat water
+    tft.setCursor(110, 205, 1);   // position and font
+    tft.setTextSize(2);
+    tft.print("2.57 kWh");
+
+}
+
 /**
  * @brief Calibrate the touch screen
  * 
@@ -709,7 +754,7 @@ void showMessage(String msg, int x, int y) {
 
   tft.setTextDatum(TC_DATUM);      // Set new datum
 
-  tft.drawString(msg, x, y, 1); // Message in font 2
+  tft.drawString(msg, x, y, 0); // Message in font 2
 
   tft.setTextDatum(td); // Restore old datum
 }
@@ -727,7 +772,7 @@ void drawRoundedSquare(RoundedSquare toDraw) {
 	);
 
     tft.setTextColor(TFT_WHITE);
-    tft.drawString("Log", toDraw.xStart + 5, toDraw.yStart + 5, 2);
+    tft.drawString("Log", toDraw.xStart + 5, toDraw.yStart + 5, 1);
 }
 
 /**
@@ -808,12 +853,12 @@ void drawPylon(int x, int y) {
  * @param y Display y coordinates
  */
 void drawSun(int x, int y) {
-    int scale = 4 * 1.5;
+    int scale = 12;  // 6
 
     int linesize = 3;
     int dxo, dyo, dxi, dyi;
 
-    tft.drawCircle(x, y, scale, TFT_RED);
+    tft.fillCircle(x, y, scale, TFT_RED);
 
     for (float i = 0; i < 360; i = i + 45) {
         dxo = 2.2 * scale * cos((i - 90) * 3.14 / 180);
@@ -836,6 +881,28 @@ void drawSun(int x, int y) {
             tft.drawLine(dxo + x + 1, dyo + y, dxi + x + 1, dyi + y, TFT_RED);
         }
     }
+}
+
+void drawWaterTank(int x, int y) {
+//350, 160
+    tft.drawRoundRect(x, y, 22, 33, 6, TFT_BLACK);
+    tft.fillRoundRect(x+1, y+1, 20, 31, 6, TFT_BLUE);
+
+    // shower hose
+    tft.drawLine(x+11, y, x+11, y-5, TFT_BLACK);
+    tft.drawLine(x+11, y-5, x+35, y-5, TFT_BLACK);
+    tft.drawLine(x+35, y-5, x+35, y+5, TFT_BLACK);
+    tft.drawLine(x+30, y+6, x+40, y+6, TFT_BLACK);
+    tft.drawLine(x+31, y+7, x+39, y+7, TFT_BLACK);
+
+    // water
+    tft.drawLine(x+31, y+8, x+27, y+14, TFT_BLUE); // left
+    tft.drawLine(x+33, y+8, x+30, y+14, TFT_BLUE); // left
+
+    tft.drawLine(x+35, y+8, x+35, y+14, TFT_BLUE); // middle
+
+    tft.drawLine(x+37, y+8, x+39, y+14, TFT_BLUE); // right
+    tft.drawLine(x+39, y+8, x+42, y+14, TFT_BLUE); // right
 }
 
 // Draw iBoost
