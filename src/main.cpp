@@ -216,27 +216,27 @@ void setup() {
 
     // Sprites for animations
     //lineSprite.setColorDepth(8);
-    lineSprite.createSprite(95, 20);
+    lineSprite.createSprite(95, 1);
     //rightArrowSprite.setColorDepth(8);
-    rightArrowSprite.createSprite(11, 21);
+    rightArrowSprite.createSprite(12, 21);
     //leftArrowSprite.setColorDepth(8);
-    leftArrowSprite.createSprite(11, 21);
+    leftArrowSprite.createSprite(12, 21);
     //whiteArrowSprite.setColorDepth(8);
-    fillArrowSprite.createSprite(11, 21);
+    fillArrowSprite.createSprite(12, 21);
     lineSprite.fillSprite(TFT_BACKGROUND);
     rightArrowSprite.fillSprite(TFT_BACKGROUND);
     leftArrowSprite.fillSprite(TFT_BACKGROUND);
     fillArrowSprite.fillSprite(TFT_BACKGROUND);
 
-    lineSprite.drawLine(0, 10, 94, 10, TFT_LIGHTGREY);
+    lineSprite.drawLine(0, 0, 95, 0, TFT_LIGHTGREY);
 
     rightArrowSprite.fillTriangle(11, 10, 1, 0, 1, 20, TFT_GREEN_ENERGY);  // > small right pointing sideways triangle
     rightArrowSprite.drawPixel(0, 10, TFT_LIGHTGREY);    
 
-    leftArrowSprite.fillTriangle(0, 10, 9, 0, 9, 20, TFT_RED);  // < small left pointing sideways triangle
-    leftArrowSprite.drawPixel(10, 10, TFT_LIGHTGREY);    
+    leftArrowSprite.fillTriangle(0, 10, 10, 0, 10, 20, TFT_RED);  // < small left pointing sideways triangle
+    leftArrowSprite.drawPixel(11, 10, TFT_LIGHTGREY);    
 
-    fillArrowSprite.drawLine(0, 10, 10, 10, TFT_LIGHTGREY);
+    fillArrowSprite.drawLine(0, 10, 11, 10, TFT_LIGHTGREY);
 
     // leftArrowSprite[1].fillTriangle(0, 10, 10, 0, 10, 20, TFT_RED);  // > small left pointing sideways triangle with line behind
     // leftArrowSprite[1].drawPixel(11, 10, TFT_GREY);  // > small left pointing sideways triangle with line behind
@@ -253,6 +253,9 @@ void setup() {
     // }
 
     initialiseScreen(); 
+
+    // tft.fillTriangle(331, 210, 321, 200, 321, 220, TFT_RED); // >
+    // tft.fillTriangle(300, 210, 310, 200, 310, 220, TFT_RED); // <
 
     tft.drawLine(0, 245, 480, 245, TFT_FOREGROUND);
     tft.drawLine(239, 245, 239, 320, TFT_FOREGROUND);
@@ -355,27 +358,27 @@ void animationTask(void *parameter) {
     int gridY = 105;
     int waterX = 105;
     int waterY = 170;
-    int width = 85;    // Width of drawing space minus width of arrow 
+    int width = 83;    // Width of drawing space minus width of arrow 
     int step = 1;       // How far to move the triangle each iteration
     int sunStartPosition = sunX;       // 
     int gridImportStartPosition = gridX;     //
     int gridExportStartPosition = gridX;     //
     int waterStartPosition = waterX;     //
     int sunArrow = sunStartPosition + 40;                // solar generation arrow start point 
-    int gridImportArrow = gridImportStartPosition;// + width;      // grid import arrow start point
+    int gridImportArrow = gridImportStartPosition + width;      // grid import arrow start point
     int gridExportArrow = gridExportStartPosition;      // grid export arrow start point
     int waterArrow = waterStartPosition + 15;            // water heating arrow start point - move so it's not the same position as sum
 
     bool solarGeneration = true;
-    bool gridImport = false;
-    bool gridExport = true;
+    bool gridImport = true;
+    bool gridExport = false;
     bool waterHeating = false;
 
     // int n;
     xSemaphoreTake(tftSemaphore, portMAX_DELAY);
-    lineSprite.pushSprite(sunX, sunY);
-    lineSprite.pushSprite(gridX, gridY);
-    lineSprite.pushSprite(waterX, waterY);
+    lineSprite.pushSprite(sunX, sunY+10);
+    lineSprite.pushSprite(gridX, gridY+10);
+    lineSprite.pushSprite(waterX, waterY+10);
     xSemaphoreGive(tftSemaphore);
 
 
