@@ -53,7 +53,7 @@ TFT_eSPI tft = TFT_eSPI();              // TFT object
 TFT_eSprite lineSprite = TFT_eSprite(&tft);    // Sprite object
 TFT_eSprite rightArrowSprite = TFT_eSprite(&tft);    // Sprite object
 TFT_eSprite leftArrowSprite = TFT_eSprite(&tft);    // Sprite object
-TFT_eSprite fillArrowSprite = TFT_eSprite(&tft);    // Sprite object
+TFT_eSprite whiteArrowSprite = TFT_eSprite(&tft);    // Sprite object
 
 // TFT specific defines
 #define TOUCH_CS 21             // Touch CS to PIN 21
@@ -63,7 +63,7 @@ TFT_eSprite fillArrowSprite = TFT_eSprite(&tft);    // Sprite object
 // #define TFT_ORANGE  0xFBE1    // RGB 255 127 00
 #define TFT_GREEN_ENERGY    0x1d85  // RGB 3 44 5
 
-#define TFT_BACKGROUND 0x3189 // 0x2969 // 0x4a31 //    TFT_BLACK
+#define TFT_BACKGROUND TFT_BLACK
 #define TFT_FOREGROUND TFT_WHITE
 #define TFT_WATERTANK TFT_RED
 
@@ -165,7 +165,7 @@ RoundedSquare btnC = {
 void initialiseScreen(void);
 void calibrateTouchScreen(void);
 void drawButtons(void);
-void showMessage(String msg, int x, int y, int textSize);
+void showMessage(String msg, int x, int y);
 void drawHouse(int x, int y);
 void drawPylon(int x, int y);
 void drawSun(int x, int y);
@@ -215,28 +215,27 @@ void setup() {
     // waterTankSprite.createSprite(100, 20);  // 8bpp requires 64 * 30 = 1920 bytes
 
     // Sprites for animations
-    //lineSprite.setColorDepth(8);
-    lineSprite.createSprite(95, 20);
-    //rightArrowSprite.setColorDepth(8);
-    rightArrowSprite.createSprite(11, 21);
-    //leftArrowSprite.setColorDepth(8);
-    leftArrowSprite.createSprite(11, 21);
-    //whiteArrowSprite.setColorDepth(8);
-    fillArrowSprite.createSprite(11, 21);
+    lineSprite.setColorDepth(8);
+    lineSprite.createSprite(94, 20);
+    rightArrowSprite.setColorDepth(8);
+    rightArrowSprite.createSprite(13, 20);
+    leftArrowSprite.setColorDepth(8);
+    leftArrowSprite.createSprite(13, 20);
+    whiteArrowSprite.setColorDepth(8);
+    whiteArrowSprite.createSprite(13, 20);
     lineSprite.fillSprite(TFT_BACKGROUND);
     rightArrowSprite.fillSprite(TFT_BACKGROUND);
     leftArrowSprite.fillSprite(TFT_BACKGROUND);
-    fillArrowSprite.fillSprite(TFT_BACKGROUND);
+    whiteArrowSprite.fillSprite(TFT_BACKGROUND);
 
-    lineSprite.drawLine(0, 10, 94, 10, TFT_LIGHTGREY);
+    lineSprite.drawLine(0, 10, 93, 10, TFT_LIGHTGREY);
 
-    rightArrowSprite.fillTriangle(11, 10, 1, 0, 1, 20, TFT_GREEN_ENERGY);  // > small right pointing sideways triangle
-    rightArrowSprite.drawPixel(0, 10, TFT_LIGHTGREY);    
+    rightArrowSprite.fillTriangle(12, 10, 3, 0, 3, 20, TFT_GREEN_ENERGY);  // > small right pointing sideways triangle
+    rightArrowSprite.drawLine(0, 10, 2, 10, TFT_LIGHTGREY);    
+    leftArrowSprite.fillTriangle(0, 10, 9, 0, 9, 20, TFT_RED);  // > small left pointing sideways triangle
+    leftArrowSprite.drawLine(10, 10, 12, 10, TFT_LIGHTGREY);    
 
-    leftArrowSprite.fillTriangle(0, 10, 9, 0, 9, 20, TFT_RED);  // < small left pointing sideways triangle
-    leftArrowSprite.drawPixel(10, 10, TFT_LIGHTGREY);    
-
-    fillArrowSprite.drawLine(0, 10, 10, 10, TFT_LIGHTGREY);
+    whiteArrowSprite.drawLine(0, 10, 13, 10, TFT_LIGHTGREY);
 
     // leftArrowSprite[1].fillTriangle(0, 10, 10, 0, 10, 20, TFT_RED);  // > small left pointing sideways triangle with line behind
     // leftArrowSprite[1].drawPixel(11, 10, TFT_GREY);  // > small left pointing sideways triangle with line behind
@@ -253,18 +252,6 @@ void setup() {
     // }
 
     initialiseScreen(); 
-
-    tft.drawLine(0, 245, 480, 245, TFT_FOREGROUND);
-    tft.drawLine(239, 245, 239, 320, TFT_FOREGROUND);
-
-    showMessage("16:38:27 Sunday 17 March 2024", 5, 250, 0);
-    showMessage("IP: 192.168.5.67", 5, 260, 0);
-
-    showMessage("16:34:23 Connected to WiFi", 245, 250, 0);
-    showMessage("16:35:01 Connected to MQTT", 245, 260, 0);
-    showMessage("16:35:11 Setup complete", 245, 270, 0);
-    showMessage("16:35:21 Request Info From iBoost", 245, 280, 0);
-    showMessage("16:35:24 Msg Rx'd From iBoost", 245, 290, 0);
     
     tftSemaphore = xSemaphoreCreateBinary();
     xSemaphoreGive(tftSemaphore);
@@ -355,21 +342,21 @@ void animationTask(void *parameter) {
     int gridY = 105;
     int waterX = 105;
     int waterY = 170;
-    int width = 85;    // Width of drawing space minus width of arrow 
-    int step = 1;       // How far to move the triangle each iteration
+    int width = 84;    // Width of drawing space minus width of arrow 
+    int step = 3;       // How far to move the triangle each iteration
     int sunStartPosition = sunX;       // 
     int gridImportStartPosition = gridX;     //
     int gridExportStartPosition = gridX;     //
     int waterStartPosition = waterX;     //
     int sunArrow = sunStartPosition + 40;                // solar generation arrow start point 
-    int gridImportArrow = gridImportStartPosition;// + width;      // grid import arrow start point
+    int gridImportArrow = gridImportStartPosition + width;      // grid import arrow start point
     int gridExportArrow = gridExportStartPosition;      // grid export arrow start point
     int waterArrow = waterStartPosition + 15;            // water heating arrow start point - move so it's not the same position as sum
 
     bool solarGeneration = true;
-    bool gridImport = false;
-    bool gridExport = true;
-    bool waterHeating = false;
+    bool gridImport = true;
+    bool gridExport = false;
+    bool waterHeating = true;
 
     // int n;
     xSemaphoreTake(tftSemaphore, portMAX_DELAY);
@@ -389,7 +376,7 @@ void animationTask(void *parameter) {
             rightArrowSprite.pushSprite(sunArrow, sunY);
             sunArrow += step;
             if (sunArrow > (width + sunStartPosition)) {
-                fillArrowSprite.pushSprite(sunArrow-step, sunY);
+                whiteArrowSprite.pushSprite(sunArrow-step, sunY);
                 sunArrow = sunStartPosition;
             } 
         }
@@ -399,7 +386,7 @@ void animationTask(void *parameter) {
             leftArrowSprite.pushSprite(gridImportArrow, gridY);
             gridImportArrow -= step;
             if (gridImportArrow < gridImportStartPosition) {
-                fillArrowSprite.pushSprite(gridImportArrow+step, gridY);
+                whiteArrowSprite.pushSprite(gridImportArrow+step, gridY);
                 gridImportArrow = gridImportStartPosition + width;
             } 
         }
@@ -409,25 +396,24 @@ void animationTask(void *parameter) {
             rightArrowSprite.pushSprite(gridExportArrow, gridY);
             gridExportArrow += step;
             if (gridExportArrow > gridExportStartPosition + width) {
-                fillArrowSprite.pushSprite(gridExportArrow-step, gridY);
+                whiteArrowSprite.pushSprite(gridExportArrow-step, gridY);
                 gridExportArrow = gridExportStartPosition;
             } 
         }
 
         // Water tank heating by solar arrow
         if (waterHeating) {
-            //dottedLineSprite.pushSprite(waterX, waterY);
             rightArrowSprite.pushSprite(waterArrow, waterY);
             waterArrow += step;
             if (waterArrow > waterStartPosition + width) {
-                fillArrowSprite.pushSprite(waterArrow-step, waterY);
+                whiteArrowSprite.pushSprite(waterArrow-step, waterY);
                 waterArrow = waterStartPosition;
             } 
         }
 
         xSemaphoreGive(tftSemaphore);
         xSemaphoreGive(animationSemaphore);
-        vTaskDelay(60 / portTICK_PERIOD_MS);
+        vTaskDelay(80 / portTICK_PERIOD_MS);
         // How much stack are we using
         // n++;
         // if (n > 20) {
@@ -602,14 +588,14 @@ void initialiseScreen(void) {
     // tft.fillTriangle(400, 80, 410, 70, 410, 90, TFT_BLACK);
 
     //This passes our buttons and draws them on the screen
-	// drawRoundedSquare(btnA);
-	// drawRoundedSquare(btnB);
-	// drawRoundedSquare(btnC);
+	drawRoundedSquare(btnA);
+	drawRoundedSquare(btnB);
+	drawRoundedSquare(btnC);
 
     drawSun(65, 145);
     drawHouse(210, 130);
     drawPylon(380, 130);
-    drawWaterTank(213, 160);
+    drawWaterTank(212, 160);
 
     tft.setCursor(75, 3, 1);   // position and font
     tft.setTextColor(TFT_BLACK, TFT_SKYBLUE);
@@ -766,13 +752,14 @@ void drawX(int x, int y) {
 // =======================================================================================
 // Show a message on the screen
 // =======================================================================================
-void showMessage(String msg, int x, int y, int textSize) {
-    tft.setTextColor(TFT_FOREGROUND, TFT_BACKGROUND);
-    //tft.drawString(msg, x, y, 0); // Message in font 2
+void showMessage(String msg, int x, int y) {
+   uint8_t td = tft.getTextDatum(); // Get current datum
 
-    tft.setCursor(x, y, 1);   // position and font
-    tft.setTextSize(textSize);
-    tft.print(msg);
+  tft.setTextDatum(TC_DATUM);      // Set new datum
+
+  tft.drawString(msg, x, y, 0); // Message in font 2
+
+  tft.setTextDatum(td); // Restore old datum
 }
 
 //This function will take a RoundedSquare struct and use these variables to display data
