@@ -138,17 +138,17 @@ int color;
 //
 
 // freeRTOS
-TaskHandle_t animationTaskHandle = NULL;
-TaskHandle_t matrixTaskHandle = NULL;
-TaskHandle_t touchTaskHandle = NULL;
+// TaskHandle_t animationTaskHandle = NULL;
+// TaskHandle_t matrixTaskHandle = NULL;
+// TaskHandle_t touchTaskHandle = NULL;
 
-SemaphoreHandle_t tftSemaphore;
-SemaphoreHandle_t animationSemaphore;
-SemaphoreHandle_t matrixSemaphore;
+// SemaphoreHandle_t tftSemaphore;
+// SemaphoreHandle_t animationSemaphore;
+// SemaphoreHandle_t matrixSemaphore;
 
-void animationTask(void *parameter);
-void matrixTask(void *parameter);
-void touchTask(void *parameter);
+// void animationTask(void *parameter);
+// void matrixTask(void *parameter);
+// void touchTask(void *parameter);
 //
 
 int minute = 0;
@@ -221,6 +221,42 @@ void drawWaterTank(int x, int y);
 void matrix(void);
 void drawRoundedSquare(RoundedSquare toDraw);
 
+// Removed freeRTOS tasks to simple loop
+void animation(void);
+void matrix(void);
+void touch(void);
+
+// New global variables !!!!
+int sunX = 100;      // Sun x y
+int sunY = 105;
+int gridX = 260;
+int gridY = 105;
+int waterX = 105;
+int waterY = 170;
+int width = 83;    // Width of drawing space minus width of arrow 
+int step = 1;       // How far to move the triangle each iteration
+int sunStartPosition = sunX;       // 
+int gridImportStartPosition = gridX;     //
+int gridExportStartPosition = gridX;     //
+int waterStartPosition = waterX;     //
+int sunArrow = sunStartPosition + 40;                // solar generation arrow start point 
+int gridImportArrow = gridImportStartPosition + width;      // grid import arrow start point
+int gridExportArrow = gridExportStartPosition;      // grid export arrow start point
+int waterArrow = waterStartPosition + 15;            // water heating arrow start point - move so it's not the same position as sum
+
+bool solarGeneration = true;
+bool gridImport = true;
+bool gridExport = false;
+bool waterHeating = false;
+
+uint32_t animationRunTime = -99999;  // time for next update
+uint32_t matrixRunTime = -99999;  // time for next update
+uint8_t updateAnimation = 50;        // update every 40ms
+uint8_t updateMatrix = 200;        // update matrix screen saver every 150ms
+
+int touchStatus = 0;        // Current state of touch screen/screensaver
+bool screenSaverActive = false;     // Is the screen saver active or not
+
 void setup() {
     BaseType_t xReturned;
 
@@ -282,11 +318,6 @@ void setup() {
 
     fillFrameSprite.drawLine(0, 10, 11, 10, TFT_LIGHTGREY);
 
-    // leftArrowSprite[1].fillTriangle(0, 10, 10, 0, 10, 20, TFT_RED);  // > small left pointing sideways triangle with line behind
-    // leftArrowSprite[1].drawPixel(11, 10, TFT_GREY);  // > small left pointing sideways triangle with line behind
-    // leftArrowSprite[0].pushSprite(200, 40);
-    // End of sprite animation creation
-
     // // vertical lines on screen to help with graphic placement
     // for (int i = 10; i < 480; i += 10) {
     //     tft.drawLine(i, 0, i, 320, TFT_BLUE);
@@ -296,18 +327,7 @@ void setup() {
     //     tft.drawLine(0, i, 480, i, TFT_BLUE);
     // }
 
-    tftSemaphore = xSemaphoreCreateBinary();
-    xSemaphoreGive(tftSemaphore);
-    animationSemaphore = xSemaphoreCreateBinary();
-    xSemaphoreGive(animationSemaphore);
-    matrixSemaphore = xSemaphoreCreateBinary();
-    xSemaphoreGive(matrixSemaphore);
-
     initialiseScreen(); 
-
-    // tft.fillTriangle(331, 210, 321, 200, 321, 220, TFT_RED); // >
-    // tft.fillTriangle(300, 210, 310, 200, 310, 220, TFT_RED); // <
-
 
     showMessage("13:43:23", 5, 250, 1, 2);
     showMessage("Sun 17 Mar 24", 110, 250, 1, 2);
@@ -334,211 +354,92 @@ void setup() {
     CLOG(myLog1.add(), "13:43:29 Water Tank: HOT");
     updateLog();
 
-    // showMessage("16:35:01 Connected to MQTT", 215, 260, 0, 1);
-    // showMessage("16:35:11 Setup complete", 215, 270, 0, 1);
-    // showMessage("16:35:21 Request Info From iBoost", 215, 280, 0, 1);
-    // showMessage("16:35:24 Msg Rx'd From iBoost", 215, 290, 0, 1);
-    
-
-    xReturned = xTaskCreate(animationTask, "animationTask", 2048, NULL, tskIDLE_PRIORITY, &animationTaskHandle);
-    if (xReturned != pdPASS) {
-        Serial.println("Failed to create animationTask");
-    }
-
-    xReturned = xTaskCreate(touchTask, "touchTask", 2048, NULL, tskIDLE_PRIORITY, &touchTaskHandle);
-    if (xReturned != pdPASS) {
-        Serial.println("Failed to create touchTask");
-    }
-
-    // // // Don't want matrix screen saver to run yet
-    xReturned = xTaskCreate(matrixTask, "matrixTask", 8192, NULL, tskIDLE_PRIORITY, &matrixTaskHandle);
-    if (xReturned != pdPASS) {
-        Serial.println("Failed to create matrixTask");
-    }
-    xSemaphoreTake(matrixSemaphore, portMAX_DELAY);
-
     Serial.println("Setup complete");
 }
 
 void loop() {
+    if (screenSaverActive) {
+        if (millis() - matrixRunTime >= updateMatrix) {  // time has elapsed, update display
+            matrixRunTime = millis();
+            matrix();
+        }
+    } else {
+        if (millis() - animationRunTime >= updateAnimation) {  // time has elapsed, update display
+            animationRunTime = millis();
+            animation();
+        }
+    }
 
-    // vTaskDelay(4000);
-    // Serial.println("Resuming matrix task from loop");
-    // vTaskResume(matrixTaskHandle);
-    // vTaskDelay(10000);
-    // // Comprueba si pulsas en zona de botón
-    // for (uint8_t b = 0; b < totalButtonNumber; b++) {
-    //     if (pressed && key[b].contains(t_x, t_y)) {
-    //         key[b].press(true);
-    //         Serial.print(t_x);
-    //         Serial.print(",");
-    //         Serial.println(t_y);
-    //     } else {
-    //         key[b].press(false);
-    //     }
-    // }
-
-    // // Accion si se pulsa boton
-    // for (uint8_t b = 0; b < totalButtonNumber; b++) {
-    //     if (key[b].justReleased()) {
-    //         key[b].drawButton(); // redibuja al soltar
-
-    //         switch (b) {
-    //             case 0:
-    //                 Serial.println("Solar");
-    //                 break;
-    //             case 1:
-    //                 Serial.println("iBoost");
-    //                 break;
-    //             case 2:
-    //                 Serial.println("Log");
-    //                 break;
-    //             default:
-    //                 delay(1);
-    //                 break;
-    //         }
-    //     }
-
-    //     if (key[b].justPressed()) {
-    //         key[b].drawButton(true);    // Show button has been pressed by changing colour
-    //         delay(10);                  // UI debouncing
-    //     }
-    // }
-
-    // // Do stuff as we pressed a button
-    // if (pressed) {
-    //     Serial.print("pulsado sobre imagen: ");
-    //     Serial.print(t_x);
-    //     Serial.print(",");
-    //     Serial.println(t_y);
-
-    //     delay(10); // evitar rebotes de pulsacion
-    // }    
+    touch();    // has the touch screen been pressed
 }
 
-
-void animationTask(void *parameter) {
-    int sunX = 100;      // Sun x y
-    int sunY = 105;
-    int gridX = 260;
-    int gridY = 105;
-    int waterX = 105;
-    int waterY = 170;
-    int width = 83;    // Width of drawing space minus width of arrow 
-    int step = 1;       // How far to move the triangle each iteration
-    int sunStartPosition = sunX;       // 
-    int gridImportStartPosition = gridX;     //
-    int gridExportStartPosition = gridX;     //
-    int waterStartPosition = waterX;     //
-    int sunArrow = sunStartPosition + 40;                // solar generation arrow start point 
-    int gridImportArrow = gridImportStartPosition + width;      // grid import arrow start point
-    int gridExportArrow = gridExportStartPosition;      // grid export arrow start point
-    int waterArrow = waterStartPosition + 15;            // water heating arrow start point - move so it's not the same position as sum
-
-    bool solarGeneration = true;
-    bool gridImport = true;
-    bool gridExport = false;
-    bool waterHeating = false;
+void animation(void) {
 
     // int n;
-    xSemaphoreTake(tftSemaphore, portMAX_DELAY);
-    lineSprite.pushSprite(sunX, sunY+10);
-    lineSprite.pushSprite(gridX, gridY+10);
-    lineSprite.pushSprite(waterX, waterY+10);
-    xSemaphoreGive(tftSemaphore);
 
-
-    for ( ;; ) {
-        // If already taken moving arrow will stop
-        xSemaphoreTake(animationSemaphore, portMAX_DELAY);
-        xSemaphoreTake(tftSemaphore, portMAX_DELAY);
-        
-        // Solar generation arrow
-        if (solarGeneration) {
-            rightArrowSprite.pushSprite(sunArrow, sunY);
-            sunArrow += step;
-            if (sunArrow > (width + sunStartPosition)) {
-                fillFrameSprite.pushSprite(sunArrow-step, sunY);
-                sunArrow = sunStartPosition;
-            } 
-        }
-
-        // Grid import arrow
-        if (gridImport) {
-            leftArrowSprite.pushSprite(gridImportArrow, gridY);
-            gridImportArrow -= step;
-            if (gridImportArrow < gridImportStartPosition) {
-                fillFrameSprite.pushSprite(gridImportArrow+step, gridY);
-                gridImportArrow = gridImportStartPosition + width;
-            } 
-        }
-
-        // Grid export arrow
-        if (gridExport) {
-            rightArrowSprite.pushSprite(gridExportArrow, gridY);
-            gridExportArrow += step;
-            if (gridExportArrow > gridExportStartPosition + width) {
-                fillFrameSprite.pushSprite(gridExportArrow-step, gridY);
-                gridExportArrow = gridExportStartPosition;
-            } 
-        }
-
-        // Water tank heating by solar arrow
-        if (waterHeating) {
-            //dottedLineSprite.pushSprite(waterX, waterY);
-            rightArrowSprite.pushSprite(waterArrow, waterY);
-            waterArrow += step;
-            if (waterArrow > waterStartPosition + width) {
-                fillFrameSprite.pushSprite(waterArrow-step, waterY);
-                waterArrow = waterStartPosition;
-            } 
-        }
-
-        xSemaphoreGive(tftSemaphore);
-        xSemaphoreGive(animationSemaphore);
-        vTaskDelay(60 / portTICK_PERIOD_MS);
-        // How much stack are we using
-        // n++;
-        // if (n > 20) {
-        //     n = 0;
-        //     Serial.print("Annimation Task Stack Left: ");
-        //     Serial.println(uxTaskGetStackHighWaterMark(NULL));
-        // }
+    // Solar generation arrow
+    if (solarGeneration) {
+        rightArrowSprite.pushSprite(sunArrow, sunY);
+        sunArrow += step;
+        if (sunArrow > (width + sunStartPosition)) {
+            fillFrameSprite.pushSprite(sunArrow-step, sunY);
+            sunArrow = sunStartPosition;
+        } 
     }
-    vTaskDelete( NULL );
+
+    // Grid import arrow
+    if (gridImport) {
+        leftArrowSprite.pushSprite(gridImportArrow, gridY);
+        gridImportArrow -= step;
+        if (gridImportArrow < gridImportStartPosition) {
+            fillFrameSprite.pushSprite(gridImportArrow+step, gridY);
+            gridImportArrow = gridImportStartPosition + width;
+        } 
+    }
+
+    // Grid export arrow
+    if (gridExport) {
+        rightArrowSprite.pushSprite(gridExportArrow, gridY);
+        gridExportArrow += step;
+        if (gridExportArrow > gridExportStartPosition + width) {
+            fillFrameSprite.pushSprite(gridExportArrow-step, gridY);
+            gridExportArrow = gridExportStartPosition;
+        } 
+    }
+
+    // Water tank heating by solar arrow
+    if (waterHeating) {
+        //dottedLineSprite.pushSprite(waterX, waterY);
+        rightArrowSprite.pushSprite(waterArrow, waterY);
+        waterArrow += step;
+        if (waterArrow > waterStartPosition + width) {
+            fillFrameSprite.pushSprite(waterArrow-step, waterY);
+            waterArrow = waterStartPosition;
+        } 
+    }
 }
-void touchTask(void *parameter) {
-    int status = 0;
+
+
+void touch(void) {
     bool pressed = false;
 
-    Serial.println("touchTask created");
    
-    for ( ;; ) {
-        xSemaphoreTake(tftSemaphore, portMAX_DELAY);
         if (tft.getTouch(&t_x, &t_y))
             pressed = true;
-        xSemaphoreGive(tftSemaphore);
 
         if (pressed) {
-            Serial.print("Touch Task Stack Left: ");
-            Serial.println(uxTaskGetStackHighWaterMark(NULL));
             pressed = false;
             key[2].press(true);
         }
 
         if (key[2].justReleased()) {
             key[2].press(false);
-            if (status == 0) {
-                status = 1;
-                Serial.println("A start screen saver");
-                // Take semaphores to stop tasks
+            if (touchStatus == 0) {
+                touchStatus = 1;
+                Serial.println("Start screen saver");
+                screenSaverActive = true;
 
-                if (xSemaphoreTake(animationSemaphore, portMAX_DELAY))    
-                    Serial.println("animationSemaphore taken");
-
-                xSemaphoreTake(tftSemaphore, portMAX_DELAY);
                 tft.fillScreen(TFT_BLACK);
-                xSemaphoreGive(tftSemaphore);
 
                 for (int j = 0; j < MAX_COL; j++) {
                     for (int i = 0; i < MAX_CHR; i++) {
@@ -549,23 +450,12 @@ void touchTask(void *parameter) {
                     color_map[j][0] = 63;
                 }
 
-                if (xSemaphoreGive(matrixSemaphore)) {
-                    Serial.println("matrix semaphore given");
-                } else {
-                    Serial.println("unable to take matrix semaphore!");
-                }
-
-            } else if (status == 1) {
-                status = 0;
-                Serial.println("A stop screen saver");
-                xSemaphoreTake(matrixSemaphore, portMAX_DELAY);
-                xSemaphoreTake(tftSemaphore, portMAX_DELAY);
+            } else if (touchStatus == 1) {
+                touchStatus = 0;
+                Serial.println("Stop screen saver");
+                screenSaverActive = false;
 
                 initialiseScreen();
-
-                // Give semaphores back so tasks can continue
-                xSemaphoreGive(tftSemaphore);
-                xSemaphoreGive(animationSemaphore);
             }
         }
         if (key[2].justPressed()) {
@@ -573,7 +463,6 @@ void touchTask(void *parameter) {
             vTaskDelay(10 / portTICK_PERIOD_MS); // debounce
         }
 
-        vTaskDelay(200 / portTICK_PERIOD_MS);
         // How much stack are we using
         // k++;
         // if (k > 1) {
@@ -581,16 +470,10 @@ void touchTask(void *parameter) {
         //     Serial.print("Grid Task Stack Left: ");
         //     Serial.println(uxTaskGetStackHighWaterMark(NULL));
         // }
-    }
-    vTaskDelete( NULL );
 }
-void matrixTask(void *parameter) {
-    Serial.println("matrixTaskCreated");
-    vTaskDelay(1000 / portTICK_PERIOD_MS);
 
-    for ( ;; ) {
-        xSemaphoreTake(matrixSemaphore, portMAX_DELAY);
-                xSemaphoreTake(tftSemaphore, portMAX_DELAY);
+void matrix(void) {
+
         for (int j = 0; j < MAX_COL; j++) {
             rnd_col_pos = random(1, MAX_COL);
 
@@ -645,12 +528,6 @@ void matrixTask(void *parameter) {
                 color_map[rnd_col_pos][0] = 63; // ~1 in 20 probability of a new character
             }
         }        
-
-                xSemaphoreGive(tftSemaphore);
-        xSemaphoreGive(matrixSemaphore);
-        vTaskDelay(150 / portTICK_PERIOD_MS);
-    }
-    vTaskDelete( NULL );
 }
 
 /**
@@ -684,6 +561,10 @@ void initialiseScreen(void) {
     drawHouse(210, 130);
     drawPylon(380, 130);
     drawWaterTank(213, 160);
+
+    lineSprite.pushSprite(sunX, sunY+10);
+    lineSprite.pushSprite(gridX, gridY+10);
+    lineSprite.pushSprite(waterX, waterY+10);
 
     tft.setCursor(75, 3, 1);   // position and font
     tft.setTextColor(TFT_BLACK, TFT_SKYBLUE);
@@ -850,12 +731,10 @@ void drawX(int x, int y) {
  * @param font Default font to use, 1, 2 etc.
  */
 void showMessage(String msg, int x, int y, int textSize, int font) {
-    xSemaphoreTake(tftSemaphore, portMAX_DELAY);
     tft.setTextColor(TFT_FOREGROUND, TFT_BACKGROUND);
     tft.setCursor(x, y, font);   // position and font
     tft.setTextSize(textSize);
     tft.print(msg);
-    xSemaphoreGive(tftSemaphore);
 }
 
 /**
@@ -864,8 +743,6 @@ void showMessage(String msg, int x, int y, int textSize, int font) {
  */
 void updateLog(void) {
     int y = 3; // top of log area
-
-    xSemaphoreTake(tftSemaphore, portMAX_DELAY);
 
     logSprite.fillSprite(TFT_BACKGROUND);
     logSprite.setTextColor(TFT_FOREGROUND, TFT_BACKGROUND);
@@ -876,9 +753,8 @@ void updateLog(void) {
     }
 
     logSprite.pushSprite(211, 246);
-    
-    xSemaphoreGive(tftSemaphore);
 }
+
 //This function will take a RoundedSquare struct and use these variables to display data
 //It will save us more code the more elements we add
 void drawRoundedSquare(RoundedSquare toDraw) {
