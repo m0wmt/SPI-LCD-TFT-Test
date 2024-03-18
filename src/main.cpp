@@ -488,9 +488,8 @@ void matrix(void) {
 
         yPos = 0;
 
-        for (int n = 0; n < MAX_CHR; n++) {
-            // chr_map[rnd_col_pos][n] = chr_map[rnd_col_pos][n + 1];   // compiler doesn't like this line
-            chr_map[rnd_col_pos][n] = chr_map[rnd_col_pos][n];
+        for (int n = 0; n < MAX_CHR-1; n++) {   // added -1 so we don't get undefinded behaviour from next line
+            chr_map[rnd_col_pos][n] = chr_map[rnd_col_pos][n + 1];   // compiler doesn't like this line
         }
         
         for (int n = MAX_CHR; n > 0; n--) {
