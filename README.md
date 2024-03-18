@@ -9,6 +9,9 @@ Working on different views and methods for the dispalying of information. Versio
 white background is not the best (complete), v2 will look at dark background (complete), v3 will investigate if freeRTOS 
 tasks for the display are needed/good idea or not.
 
+Version 3 without any tasks or semaphores seems to be much more responsive!  This could have been because I didn't implement
+the tasks very well or not but it certainly simplifies things.
+
 ![Version 1](./images/v1.jpg)
 ![Version 2](./images/v2.jpg)
 

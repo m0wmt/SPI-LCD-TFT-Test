@@ -213,7 +213,7 @@ void initialiseScreen(void);
 void calibrateTouchScreen(void);
 void drawButtons(void);
 void showMessage(String msg, int x, int y, int textSize, int font);
-void updateLog(void);
+void updateLog(const char *msg);
 void drawHouse(int x, int y);
 void drawPylon(int x, int y);
 void drawSun(int x, int y);
@@ -225,6 +225,7 @@ void drawRoundedSquare(RoundedSquare toDraw);
 void animation(void);
 void matrix(void);
 void touch(void);
+void startScreenSaver(void);
 
 // New global variables !!!!
 int sunX = 100;      // Sun x y
@@ -250,9 +251,11 @@ bool gridExport = false;
 bool waterHeating = false;
 
 uint32_t animationRunTime = -99999;  // time for next update
-uint32_t matrixRunTime = -99999;  // time for next update
 uint8_t updateAnimation = 50;        // update every 40ms
+uint32_t matrixRunTime = -99999;  // time for next update
 uint8_t updateMatrix = 200;        // update matrix screen saver every 150ms
+uint32_t inactiveRunTime = -99999;  // inactivity run time timer
+uint32_t inactive = 1000 * 60 * 2;  // inactivity of 15 minutes then start screen saver
 
 int touchStatus = 0;        // Current state of touch screen/screensaver
 bool screenSaverActive = false;     // Is the screen saver active or not
@@ -277,6 +280,9 @@ void setup() {
     tft.invertDisplay(false); // Required for my LCD TFT screen for color correction
 
     tft.setRotation(3);
+    tft.setSwapBytes(true); // Color bytes are swapped when writing to RAM, this introduces a small overhead but
+                            // there is a net performance gain by using swapped bytes.
+
     tft.pushImage(75, 75, 320, 170, (uint16_t *)img_logo);
 
     delay(1000);
@@ -329,32 +335,24 @@ void setup() {
 
     initialiseScreen(); 
 
-    showMessage("13:43:23", 5, 250, 1, 2);
-    showMessage("Sun 17 Mar 24", 110, 250, 1, 2);
+    // CLOG(myLog1.add(), "00:00:00 WiFi setup");
+    // CLOG(myLog1.add(), "13:43:20 NTP setup");
+    // CLOG(myLog1.add(), "13:43:23 MQTT setup");
+    // CLOG(myLog1.add(), "13:43:24 CC1101 setup");
+    // CLOG(myLog1.add(), "13:43:25 All ready to go");
+    // CLOG(myLog1.add(), "13:43:26 Water Tank: Heating by solar");
 
-    showMessage("Water Tank: Heating by solar", 5, 270, 1, 2);
-    showMessage("Sender Battery: OK", 5, 288, 1, 2);
-
-    showMessage("IP: 192.168.5.67", 5, 310, 0, 1);
-    showMessage("LQI: 23", 160, 310, 0, 1);
-
-    CLOG(myLog1.add(), "00:00:00 WiFi setup");
-    CLOG(myLog1.add(), "13:43:20 NTP setup");
-    CLOG(myLog1.add(), "13:43:23 MQTT setup");
-    CLOG(myLog1.add(), "13:43:24 CC1101 setup");
-    CLOG(myLog1.add(), "13:43:25 All ready to go");
-    CLOG(myLog1.add(), "13:43:26 Water Tank: Heating by solar");
-    CLOG(myLog1.add(), "13:43:27 Sender Battery OK");
-    updateLog(); // 43 chars max
+    updateLog("Sender Battery OK"); // 43 chars max
     
     delay(1000);
-    CLOG(myLog1.add(), "13:43:28 Heating OFF");
-    updateLog();
+    updateLog("Heating OFF");
+
     delay(1000);
-    CLOG(myLog1.add(), "13:43:29 Water Tank: HOT");
-    updateLog();
+    updateLog("Water Tank: HOT");
 
     Serial.println("Setup complete");
+
+    inactiveRunTime = millis();     // start inactivity timer for turning on the screen saver
 }
 
 void loop() {
@@ -368,13 +366,17 @@ void loop() {
             animationRunTime = millis();
             animation();
         }
+
+        if (millis() >= inactiveRunTime + inactive) {       // We've been inactive for 'n' minutes, start screensaver
+            updateLog("No activity, start screen saver");
+            startScreenSaver();
+        }
     }
 
     touch();    // has the touch screen been pressed
 }
 
 void animation(void) {
-
     // int n;
 
     // Solar generation arrow
@@ -421,113 +423,94 @@ void animation(void) {
 
 
 void touch(void) {
-    bool pressed = false;
+    if (tft.getTouch(&t_x, &t_y))
+        pressed = true;
 
-   
-        if (tft.getTouch(&t_x, &t_y))
-            pressed = true;
+    if (pressed) {
+        pressed = false;
+        key[2].press(true);
+    }
 
-        if (pressed) {
-            pressed = false;
-            key[2].press(true);
+    if (key[2].justReleased()) {
+        key[2].press(false);
+        if (!screenSaverActive) {
+            updateLog("Screen saver started by user");
+            startScreenSaver();
+        } else if (screenSaverActive) {
+            Serial.println("Stop screen saver");
+            screenSaverActive = false;
+            inactiveRunTime = millis();     // reset inactivity timer to now
+            initialiseScreen();
+            updateLog("Stop screen saver");
         }
+    }
 
-        if (key[2].justReleased()) {
-            key[2].press(false);
-            if (touchStatus == 0) {
-                touchStatus = 1;
-                Serial.println("Start screen saver");
-                screenSaverActive = true;
-
-                tft.fillScreen(TFT_BLACK);
-
-                for (int j = 0; j < MAX_COL; j++) {
-                    for (int i = 0; i < MAX_CHR; i++) {
-                    chr_map[j][i] = 0;
-                    color_map[j][i] = 0;
-                    }
-
-                    color_map[j][0] = 63;
-                }
-
-            } else if (touchStatus == 1) {
-                touchStatus = 0;
-                Serial.println("Stop screen saver");
-                screenSaverActive = false;
-
-                initialiseScreen();
-            }
-        }
-        if (key[2].justPressed()) {
-            key[2].press(false);
-            vTaskDelay(10 / portTICK_PERIOD_MS); // debounce
-        }
-
-        // How much stack are we using
-        // k++;
-        // if (k > 1) {
-        //     k = 0;
-        //     Serial.print("Grid Task Stack Left: ");
-        //     Serial.println(uxTaskGetStackHighWaterMark(NULL));
-        // }
+    if (key[2].justPressed()) {
+        key[2].press(false);
+        vTaskDelay(10 / portTICK_PERIOD_MS); // debounce
+    }
 }
 
+/**
+ * @brief Matrix style screen saver.
+ * 
+ */
 void matrix(void) {
 
-        for (int j = 0; j < MAX_COL; j++) {
-            rnd_col_pos = random(1, MAX_COL);
+    for (int j = 0; j < MAX_COL; j++) {
+        rnd_col_pos = random(1, MAX_COL);
 
-            rnd_x = rnd_col_pos * COL_WIDTH;
+        rnd_x = rnd_col_pos * COL_WIDTH;
 
-            col_pos[rnd_col_pos - 1] = rnd_x; // save position
+        col_pos[rnd_col_pos - 1] = rnd_x; // save position
 
-            for (int i = 0; i < MAX_CHR; i++) { // 40
-                tft.setTextColor(color_map[rnd_col_pos][i] << 5, TFT_BLACK); // Set the green character brightness
+        for (int i = 0; i < MAX_CHR; i++) { // 40
+            tft.setTextColor(color_map[rnd_col_pos][i] << 5, TFT_BLACK); // Set the green character brightness
 
-                if (color_map[rnd_col_pos][i] == 63) {
-                    tft.setTextColor(TFT_GREEN_ENERGY, TFT_BLACK); // Draw darker green character
+            if (color_map[rnd_col_pos][i] == 63) {
+                tft.setTextColor(TFT_DARKGREY, TFT_BLACK); // Draw darker green character
+            }
+
+            if ((chr_map[rnd_col_pos][i] == 0) || (color_map[rnd_col_pos][i] == 63)) {
+                chr_map[rnd_col_pos][i] = random(31, 128);
+
+                if (i > 1) {
+                    chr_map[rnd_col_pos][i - 1] = chr_map[rnd_col_pos][i];
+                    chr_map[rnd_col_pos][i - 2] = chr_map[rnd_col_pos][i];
                 }
-
-                if ((chr_map[rnd_col_pos][i] == 0) || (color_map[rnd_col_pos][i] == 63)) {
-                    chr_map[rnd_col_pos][i] = random(31, 128);
-
-                    if (i > 1) {
-                        chr_map[rnd_col_pos][i - 1] = chr_map[rnd_col_pos][i];
-                        chr_map[rnd_col_pos][i - 2] = chr_map[rnd_col_pos][i];
-                    }
-                }
-
-                yPos += LINE_HEIGHT;
-
-                tft.drawChar(chr_map[rnd_col_pos][i], rnd_x, yPos, 1); // Draw the character
-
             }
 
-            yPos = 0;
+            yPos += LINE_HEIGHT;
 
-            for (int n = 0; n < MAX_CHR; n++) {
-            // chr_map[rnd_col_pos][n] = chr_map[rnd_col_pos][n + 1];
-                chr_map[rnd_col_pos][n] = chr_map[rnd_col_pos][n];
-            }
-            
-            for (int n = MAX_CHR; n > 0; n--) {
-                color_map[rnd_col_pos][n] = color_map[rnd_col_pos][n - 1];
-            }
+            tft.drawChar(chr_map[rnd_col_pos][i], rnd_x, yPos, 1); // Draw the character
 
-            chr_map[rnd_col_pos][0] = 0;
+        }
 
-            if (color_map[rnd_col_pos][0] > 20) {
-                color_map[rnd_col_pos][0] -= 3; // Rapid fade initially brightness values
-            }
+        yPos = 0;
 
-            if (color_map[rnd_col_pos][0] > 0) {
-                color_map[rnd_col_pos][0] -= 1; // Slow fade later
-            }
+        for (int n = 0; n < MAX_CHR; n++) {
+            // chr_map[rnd_col_pos][n] = chr_map[rnd_col_pos][n + 1];   // compiler doesn't like this line
+            chr_map[rnd_col_pos][n] = chr_map[rnd_col_pos][n];
+        }
+        
+        for (int n = MAX_CHR; n > 0; n--) {
+            color_map[rnd_col_pos][n] = color_map[rnd_col_pos][n - 1];
+        }
 
-            if ((random(20) == 1) && (j < MAX_COL_DOT6)) { // MAX_COL * 0.6
-                color_map[rnd_col_pos][0] = 63; // ~1 in 20 probability of a new character
-            }
-        }        
+        chr_map[rnd_col_pos][0] = 0;
+
+        if (color_map[rnd_col_pos][0] > 20) {
+            color_map[rnd_col_pos][0] -= 3; // Rapid fade initially brightness values
+        }
+
+        if (color_map[rnd_col_pos][0] > 0) {
+            color_map[rnd_col_pos][0] -= 1; // Slow fade later
+        }
+
+        if ((random(20) == 1) && (j < MAX_COL_DOT6)) { // MAX_COL * 0.6
+            color_map[rnd_col_pos][0] = 63; // ~1 in 20 probability of a new character
+        }
+    }        
 }
 
 /**
@@ -569,9 +552,18 @@ void initialiseScreen(void) {
     tft.setCursor(75, 3, 1);   // position and font
     tft.setTextColor(TFT_BLACK, TFT_SKYBLUE);
     tft.setTextSize(2);
-    tft.print("House Electricity Monitor v2");
+    tft.print("House Electricity Monitor v3");
 
     logSprite.pushSprite(211, 246);
+
+    showMessage("13:43:23", 5, 250, 1, 2);
+    showMessage("Sun 17 Mar 24", 110, 250, 1, 2);
+
+    showMessage("Water Tank: Heating by solar", 5, 270, 1, 2);
+    showMessage("Sender Battery: OK", 5, 288, 1, 2);
+
+    showMessage("IP: 192.168.5.67", 5, 310, 0, 1);
+    showMessage("LQI: 23", 160, 310, 0, 1);
 
     // Demo values
     // Solar generation now
@@ -599,6 +591,25 @@ void initialiseScreen(void) {
     tft.setTextSize(2);
     tft.print("2.57 kWh");
 
+}
+
+/**
+ * @brief Start the screen saver.  Will be started by the user touching the screen
+ * or after 'n' minutes of inactivity to save the screen from burn-in.
+ */
+void startScreenSaver(void) {
+    screenSaverActive = true;
+            
+    tft.fillScreen(TFT_BLACK);
+
+    for (int j = 0; j < MAX_COL; j++) {
+        for (int i = 0; i < MAX_CHR; i++) {
+        chr_map[j][i] = 0;
+        color_map[j][i] = 0;
+        }
+
+        color_map[j][0] = 63;
+    }
 }
 
 /**
@@ -741,8 +752,11 @@ void showMessage(String msg, int x, int y, int textSize, int font) {
  * @brief Write cLog logging to the log screen area.
  * 
  */
-void updateLog(void) {
+void updateLog(const char *msg) {
     int y = 3; // top of log area
+
+    // Add time to message then add to CLOG
+    CLOG(myLog1.add(), "18:12:32 %s", msg);
 
     logSprite.fillSprite(TFT_BACKGROUND);
     logSprite.setTextColor(TFT_FOREGROUND, TFT_BACKGROUND);
