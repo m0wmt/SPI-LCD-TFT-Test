@@ -27,6 +27,17 @@
 #include "img_logo.h"
 
 /*
+    CLOG_ENABLE Needs to be defined before cLog.h is included.  
+    
+    Using cLog's linked list to hold log messages which will be displayed in the log
+    area as required. Can display up to 7 messages each up to 43 characters wide. New
+    messages will replace older ones and the screen will then be updated.
+*/ 
+
+#define CLOG_ENABLE true
+#include "cLog.h"
+
+/*
     SPI port for ESP32 && TFT ILI9486 480x320 with touch & SD card reader
     LCD         ---->       ESP32 WROOM 32D
     1 Power                 3.3V
@@ -53,7 +64,8 @@ TFT_eSPI tft = TFT_eSPI();              // TFT object
 TFT_eSprite lineSprite = TFT_eSprite(&tft);    // Sprite object
 TFT_eSprite rightArrowSprite = TFT_eSprite(&tft);    // Sprite object
 TFT_eSprite leftArrowSprite = TFT_eSprite(&tft);    // Sprite object
-TFT_eSprite fillArrowSprite = TFT_eSprite(&tft);    // Sprite object
+TFT_eSprite fillFrameSprite = TFT_eSprite(&tft);    // Sprite object
+TFT_eSprite logSprite = TFT_eSprite(&tft);    // Sprite object for log area
 
 // TFT specific defines
 #define TOUCH_CS 21             // Touch CS to PIN 21
@@ -118,6 +130,11 @@ int yh = tft.height()/2;
 bool pressed = false;
 //
 
+// Clog init
+const uint16_t maxEntries = 7;
+const uint16_t maxEntryChars = 44;
+CLOG_NEW myLog1(maxEntries, maxEntryChars, NO_TRIGGER, WRAP);
+
 // This struct holds all the variables we need to draw a rounded square
 struct RoundedSquare {
     int xStart;
@@ -165,7 +182,8 @@ RoundedSquare btnC = {
 void initialiseScreen(void);
 void calibrateTouchScreen(void);
 void drawButtons(void);
-void showMessage(String msg, int x, int y, int textSize);
+void showMessage(String msg, int x, int y, int textSize, int font);
+void updateLog(void);
 void drawHouse(int x, int y);
 void drawPylon(int x, int y);
 void drawSun(int x, int y);
@@ -207,12 +225,8 @@ void setup() {
     //drawButtons();
 
     // Create the Sprites
-    // sunSprite.setColorDepth(8);      // Create an 8bpp Sprite of 60x30 pixels
-    // sunSprite.createSprite(100, 20);  // 8bpp requires 64 * 30 = 1920 bytes
-    // gridSprite.setColorDepth(8);      // Create an 8bpp Sprite of 60x30 pixels
-    // gridSprite.createSprite(100, 20);  // 8bpp requires 64 * 30 = 1920 bytes
-    // waterTankSprite.setColorDepth(8);      // Create an 8bpp Sprite of 60x30 pixels
-    // waterTankSprite.createSprite(100, 20);  // 8bpp requires 64 * 30 = 1920 bytes
+    logSprite.createSprite(270, 75);
+    logSprite.fillSprite(TFT_BACKGROUND);
 
     // Sprites for animations
     //lineSprite.setColorDepth(8);
@@ -222,11 +236,11 @@ void setup() {
     //leftArrowSprite.setColorDepth(8);
     leftArrowSprite.createSprite(12, 21);
     //whiteArrowSprite.setColorDepth(8);
-    fillArrowSprite.createSprite(12, 21);
+    fillFrameSprite.createSprite(12, 21);
     lineSprite.fillSprite(TFT_BACKGROUND);
     rightArrowSprite.fillSprite(TFT_BACKGROUND);
     leftArrowSprite.fillSprite(TFT_BACKGROUND);
-    fillArrowSprite.fillSprite(TFT_BACKGROUND);
+    fillFrameSprite.fillSprite(TFT_BACKGROUND);
 
     lineSprite.drawLine(0, 0, 95, 0, TFT_LIGHTGREY);
 
@@ -236,7 +250,7 @@ void setup() {
     leftArrowSprite.fillTriangle(0, 10, 10, 0, 10, 20, TFT_RED);  // < small left pointing sideways triangle
     leftArrowSprite.drawPixel(11, 10, TFT_LIGHTGREY);    
 
-    fillArrowSprite.drawLine(0, 10, 11, 10, TFT_LIGHTGREY);
+    fillFrameSprite.drawLine(0, 10, 11, 10, TFT_LIGHTGREY);
 
     // leftArrowSprite[1].fillTriangle(0, 10, 10, 0, 10, 20, TFT_RED);  // > small left pointing sideways triangle with line behind
     // leftArrowSprite[1].drawPixel(11, 10, TFT_GREY);  // > small left pointing sideways triangle with line behind
@@ -252,29 +266,49 @@ void setup() {
     //     tft.drawLine(0, i, 480, i, TFT_BLUE);
     // }
 
-    initialiseScreen(); 
-
-    // tft.fillTriangle(331, 210, 321, 200, 321, 220, TFT_RED); // >
-    // tft.fillTriangle(300, 210, 310, 200, 310, 220, TFT_RED); // <
-
-    tft.drawLine(0, 245, 480, 245, TFT_FOREGROUND);
-    tft.drawLine(239, 245, 239, 320, TFT_FOREGROUND);
-
-    showMessage("16:38:27 Sunday 17 March 2024", 5, 250, 0);
-    showMessage("IP: 192.168.5.67", 5, 260, 0);
-
-    showMessage("16:34:23 Connected to WiFi", 245, 250, 0);
-    showMessage("16:35:01 Connected to MQTT", 245, 260, 0);
-    showMessage("16:35:11 Setup complete", 245, 270, 0);
-    showMessage("16:35:21 Request Info From iBoost", 245, 280, 0);
-    showMessage("16:35:24 Msg Rx'd From iBoost", 245, 290, 0);
-    
     tftSemaphore = xSemaphoreCreateBinary();
     xSemaphoreGive(tftSemaphore);
     animationSemaphore = xSemaphoreCreateBinary();
     xSemaphoreGive(animationSemaphore);
     matrixSemaphore = xSemaphoreCreateBinary();
     xSemaphoreGive(matrixSemaphore);
+
+    initialiseScreen(); 
+
+    // tft.fillTriangle(331, 210, 321, 200, 321, 220, TFT_RED); // >
+    // tft.fillTriangle(300, 210, 310, 200, 310, 220, TFT_RED); // <
+
+
+    showMessage("13:43:23", 5, 250, 1, 2);
+    showMessage("Sun 17 Mar 24", 110, 250, 1, 2);
+
+    showMessage("Water Tank: Heating by solar", 5, 270, 1, 2);
+    showMessage("Sender Battery: OK", 5, 288, 1, 2);
+
+    showMessage("IP: 192.168.5.67", 5, 310, 0, 1);
+    showMessage("LQI: 23", 160, 310, 0, 1);
+
+    CLOG(myLog1.add(), "00:00:00 WiFi setup");
+    CLOG(myLog1.add(), "13:43:20 NTP setup");
+    CLOG(myLog1.add(), "13:43:23 MQTT setup");
+    CLOG(myLog1.add(), "13:43:24 CC1101 setup");
+    CLOG(myLog1.add(), "13:43:25 All ready to go");
+    CLOG(myLog1.add(), "13:43:26 Water Tank: Heating by solar");
+    CLOG(myLog1.add(), "13:43:27 Sender Battery OK");
+    updateLog(); // 43 chars max
+    
+    delay(1000);
+    CLOG(myLog1.add(), "13:43:28 Heating OFF");
+    updateLog();
+    delay(1000);
+    CLOG(myLog1.add(), "13:43:29 Water Tank: HOT");
+    updateLog();
+
+    // showMessage("16:35:01 Connected to MQTT", 215, 260, 0, 1);
+    // showMessage("16:35:11 Setup complete", 215, 270, 0, 1);
+    // showMessage("16:35:21 Request Info From iBoost", 215, 280, 0, 1);
+    // showMessage("16:35:24 Msg Rx'd From iBoost", 215, 290, 0, 1);
+    
 
     xReturned = xTaskCreate(animationTask, "animationTask", 2048, NULL, tskIDLE_PRIORITY, &animationTaskHandle);
     if (xReturned != pdPASS) {
@@ -292,6 +326,8 @@ void setup() {
         Serial.println("Failed to create matrixTask");
     }
     xSemaphoreTake(matrixSemaphore, portMAX_DELAY);
+
+    Serial.println("Setup complete");
 }
 
 void loop() {
@@ -392,7 +428,7 @@ void animationTask(void *parameter) {
             rightArrowSprite.pushSprite(sunArrow, sunY);
             sunArrow += step;
             if (sunArrow > (width + sunStartPosition)) {
-                fillArrowSprite.pushSprite(sunArrow-step, sunY);
+                fillFrameSprite.pushSprite(sunArrow-step, sunY);
                 sunArrow = sunStartPosition;
             } 
         }
@@ -402,7 +438,7 @@ void animationTask(void *parameter) {
             leftArrowSprite.pushSprite(gridImportArrow, gridY);
             gridImportArrow -= step;
             if (gridImportArrow < gridImportStartPosition) {
-                fillArrowSprite.pushSprite(gridImportArrow+step, gridY);
+                fillFrameSprite.pushSprite(gridImportArrow+step, gridY);
                 gridImportArrow = gridImportStartPosition + width;
             } 
         }
@@ -412,7 +448,7 @@ void animationTask(void *parameter) {
             rightArrowSprite.pushSprite(gridExportArrow, gridY);
             gridExportArrow += step;
             if (gridExportArrow > gridExportStartPosition + width) {
-                fillArrowSprite.pushSprite(gridExportArrow-step, gridY);
+                fillFrameSprite.pushSprite(gridExportArrow-step, gridY);
                 gridExportArrow = gridExportStartPosition;
             } 
         }
@@ -423,7 +459,7 @@ void animationTask(void *parameter) {
             rightArrowSprite.pushSprite(waterArrow, waterY);
             waterArrow += step;
             if (waterArrow > waterStartPosition + width) {
-                fillArrowSprite.pushSprite(waterArrow-step, waterY);
+                fillFrameSprite.pushSprite(waterArrow-step, waterY);
                 waterArrow = waterStartPosition;
             } 
         }
@@ -598,6 +634,11 @@ void initialiseScreen(void) {
     // Define area at top of screen for date, time etc.
     tft.fillRect(0, 20, 480, 2, TFT_BLACK);
     tft.fillRect(0, 0, 480, 20, TFT_SKYBLUE);
+
+    // Define message area at the bottom
+    tft.drawLine(0, 245, 480, 245, TFT_FOREGROUND);
+    tft.drawLine(210, 245, 210, 320, TFT_FOREGROUND);
+
     // Right (>) pointing triangle 400 = point x, 50 = point y, 390 = base x, 40 = base y top, 390 = base x, 60 = base y bottom
     // tft.fillTriangle(400, 50, 390, 40, 390, 60, TFT_BLACK);
 
@@ -618,6 +659,8 @@ void initialiseScreen(void) {
     tft.setTextColor(TFT_BLACK, TFT_SKYBLUE);
     tft.setTextSize(2);
     tft.print("House Electricity Monitor v2");
+
+    logSprite.pushSprite(211, 246);
 
     // Demo values
     // Solar generation now
@@ -766,18 +809,46 @@ void drawX(int x, int y) {
 }
 
 
-// =======================================================================================
-// Show a message on the screen
-// =======================================================================================
-void showMessage(String msg, int x, int y, int textSize) {
+/**
+ * @brief Show a message on the screen, mainly used for time, date and mainly fixed
+ * information that does not change a lot (except the time obviously!).
+ * 
+ * @param msg String to write to the display
+ * @param x Pixel location horizontal
+ * @param y Pixel location vertical
+ * @param textSize Text size to use
+ * @param font Default font to use, 1, 2 etc.
+ */
+void showMessage(String msg, int x, int y, int textSize, int font) {
+    xSemaphoreTake(tftSemaphore, portMAX_DELAY);
     tft.setTextColor(TFT_FOREGROUND, TFT_BACKGROUND);
-    //tft.drawString(msg, x, y, 0); // Message in font 2
-
-    tft.setCursor(x, y, 1);   // position and font
+    tft.setCursor(x, y, font);   // position and font
     tft.setTextSize(textSize);
     tft.print(msg);
+    xSemaphoreGive(tftSemaphore);
 }
 
+/**
+ * @brief Write cLog logging to the log screen area.
+ * 
+ */
+void updateLog(void) {
+    int y = 3; // top of log area
+
+    xSemaphoreTake(tftSemaphore, portMAX_DELAY);
+
+    logSprite.fillSprite(TFT_BACKGROUND);
+    logSprite.setTextColor(TFT_FOREGROUND, TFT_BACKGROUND);
+    logSprite.setTextFont(0);
+    for (uint8_t i = 0; i < myLog1.numEntries; i++, y+=10) {
+        logSprite.setCursor(5, y);
+        logSprite.print(myLog1.get(i));
+    }
+
+    logSprite.pushSprite(211, 246);
+    
+    xSemaphoreGive(tftSemaphore);
+}
 //This function will take a RoundedSquare struct and use these variables to display data
 //It will save us more code the more elements we add
 void drawRoundedSquare(RoundedSquare toDraw) {
