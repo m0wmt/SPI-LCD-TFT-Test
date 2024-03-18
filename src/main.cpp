@@ -248,7 +248,7 @@ int waterArrow = waterStartPosition + 15;            // water heating arrow star
 bool solarGeneration = true;
 bool gridImport = true;
 bool gridExport = false;
-bool waterHeating = false;
+bool waterHeating = true;
 
 uint32_t animationRunTime = -99999;  // time for next update
 uint8_t updateAnimation = 50;        // update every 40ms
@@ -441,7 +441,7 @@ void touch(void) {
             screenSaverActive = false;
             inactiveRunTime = millis();     // reset inactivity timer to now
             initialiseScreen();
-            updateLog("Stop screen saver");
+            updateLog("Screen saver stopped by user");
         }
     }
 
