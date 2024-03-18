@@ -6,7 +6,7 @@ Drawings / animations are for development of the iBoost Monitor.
 
 ## Screen Thoughts
 Working on different views and methods for the dispalying of information. Version 1 is first stab, 
-white background is not the best, v2 will look at dark background, v3 will investigate if freeRTOS 
+white background is not the best (complete), v2 will look at dark background (complete), v3 will investigate if freeRTOS 
 tasks for the display are needed/good idea or not.
 
 ![Version 1](./images/v1.jpg)
