@@ -10,6 +10,7 @@ white background is not the best, v2 will look at dark background, v3 will inves
 tasks for the display are needed/good idea or not.
 
 ![Version 1](./images/v1.jpg)
+![Version 2](./images/v2.jpg)
 
 ## Wiring 
 
