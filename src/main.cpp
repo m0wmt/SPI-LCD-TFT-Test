@@ -5,15 +5,25 @@
 
     Do not forget to check user_setup.h in .pio\libdeps\upesy_wroom\TFT_eSPI folder to set display and pins.
         #define ILI9486_DRIVER
-
+        VSPI
         #define TFT_MOSI 23     // In some display driver board, it might be written as "SDA" and so on.
         #define TFT_MISO 19     // DO NOT CONNECT TO LCD IF USING A TOUCH SCREEN
         #define TFT_SCLK 18
         #define TFT_CS   5      // Chip select control pin
         #define TFT_DC   2      // Data Command control pin
         #define TFT_RST  4      // Reset pin (could connect to Arduino RESET pin)
-        #define TFT_BL   22     // LED back-light
+        #define TFT_BL   3.3v   // LED back-light
         #define TOUCH_CS 21     // Chip select pin (T_CS) of touch screen
+
+        HSPI
+        #define TFT_MOSI 13     // In some display driver board, it might be written as "SDA" and so on.
+        #define TFT_MISO 12     // DO NOT CONNECT TO LCD IF USING A TOUCH SCREEN
+        #define TFT_SCLK 14
+        #define TFT_CS   15     // Chip select control pin
+        #define TFT_DC   26     // Data Command control pin
+        #define TFT_RST  27     // Reset pin (could connect to Arduino RESET pin)
+        #define TFT_BL   3.3v   // LED back-light
+        #define TOUCH_CS 4      // Chip select pin (T_CS) of touch screen
 
     Thanks to https://github.com/OscarCalero/TFT_ILI9486/blob/main/Imagenes_SD_y_Touch.ino for his video and
     code to get me started in the right direction.
@@ -38,7 +48,7 @@
 #include "cLog.h"
 
 /*
-    SPI port for ESP32 && TFT ILI9486 480x320 with touch & SD card reader
+    VSPI port for ESP32 && TFT ILI9486 480x320 with touch & SD card reader
     LCD         ---->       ESP32 WROOM 32D
     1 Power                 3.3V
     2 Ground                GND
@@ -54,7 +64,27 @@
     12 T_DIN (SPI MOSI)     23 (same as LCD)
     13 T_DO (SPI MISO)      19 (same as LCD)
     14 T_IRQ                Currently not connected
+
+
+    HSPI port for ESP32 && TFT ILI9486 480x320 with touch & SD card reader
+    LCD         ---->       ESP32 WROOM 32D
+    1 Power                 3.3V
+    2 Ground                GND
+    3 CS (SPI SS)           15
+    4 LCD Reset             21 
+    5 DC/LCD Bus command    2???
+    6 LCD MOSI (SPI)        13
+    7 LCD SCK (SPI)         14
+    8 LCD Backlight         3.3V
+    9 LCD MISO              12  (DO NOT CONNECT IF USING TOUCH SCREEN!)
+    10 T_CLK (SPI)          14 (same as LCD)
+    11 T_CS                  4
+    12 T_DIN (SPI MOSI)     13 (same as LCD)
+    13 T_DO (SPI MISO)      12 (same as LCD)
+    14 T_IRQ                Currently not connected
+
 */
+
 
 TFT_eSPI tft = TFT_eSPI();              // TFT object
 // TFT_eSprite sunSprite = TFT_eSprite(&tft);    // Sprite object
@@ -68,7 +98,7 @@ TFT_eSprite fillFrameSprite = TFT_eSprite(&tft);    // Sprite object
 TFT_eSprite logSprite = TFT_eSprite(&tft);    // Sprite object for log area
 
 // TFT specific defines
-#define TOUCH_CS 21             // Touch CS to PIN 21
+//#define TOUCH_CS 21             // Touch CS to PIN 21 for VSPI, PIN 4 for HSPI
 #define REPEAT_CAL false        // True if calibration is requested after reboot
 #define TFT_GREY    0x5AEB
 #define TFT_TEAL    0x028A      // RGB 00 80 80
