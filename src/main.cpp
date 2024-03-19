@@ -85,6 +85,10 @@
 
 */
 
+// freeRTOS - one task for all the screen activity, for use in iBoost as it's own task.
+TaskHandle_t displayTaskHandle = NULL;
+void displayTask(void *parameter);
+//
 
 TFT_eSPI tft = TFT_eSPI();              // TFT object
 
@@ -177,18 +181,13 @@ static void touch(void);
 static void startScreenSaver(void);
 
 // New global variables !!!!
+static uint32_t inactiveRunTime = -99999;  // inactivity run time timer
 
 bool solarGeneration = true;
 bool gridImport = true;
 bool gridExport = false;
 bool waterHeating = true;
 
-uint32_t animationRunTime = -99999;  // time for next update
-uint8_t updateAnimation = 50;        // update every 40ms
-uint32_t matrixRunTime = -99999;  // time for next update
-uint8_t updateMatrix = 200;        // update matrix screen saver every 150ms
-uint32_t inactiveRunTime = -99999;  // inactivity run time timer
-uint32_t inactive = 1000 * 60 * 15;  // inactivity of 15 minutes then start screen saver
 
 bool screenSaverActive = false;     // Is the screen saver active or not
 
@@ -267,31 +266,58 @@ void setup(void) {
     delay(1000);
     updateLog("Water Tank: HOT");
 
-    Serial.println("Setup complete");
 
     inactiveRunTime = millis();     // start inactivity timer for turning on the screen saver
+
+    xReturned = xTaskCreate(displayTask, "displayTask", 2048, NULL, tskIDLE_PRIORITY, &displayTaskHandle);
+    if (xReturned != pdPASS) {
+        Serial.println("Failed to create displayTask, setup failed");
+    } else {
+        Serial.println("Setup complete");
+    }
 }
 
 void loop(void) {
-    if (screenSaverActive) {
-        if (millis() - matrixRunTime >= updateMatrix) {  // time has elapsed, update display
-            matrixRunTime = millis();
-            matrix();
-        }
-    } else {
-        if (millis() - animationRunTime >= updateAnimation) {  // time has elapsed, update display
-            animationRunTime = millis();
-            animation();
-        }
-
-        if (millis() >= inactiveRunTime + inactive) {       // We've been inactive for 'n' minutes, start screensaver
-            updateLog("No activity, start screen saver");
-            startScreenSaver();
-        }
-    }
-
-    touch();    // has the touch screen been pressed, check each loop or can we add a wait time?
+    // See task
 }
+
+/**
+ * @brief Task to handle all things screen related.
+ * 
+ */
+void displayTask(void *parameter) {
+    uint32_t animationRunTime = -99999;  // time for next update
+    uint8_t updateAnimation = 50;        // update every 40ms
+    uint32_t matrixRunTime = -99999;  // time for next update
+    uint8_t updateMatrix = 200;        // update matrix screen saver every 150ms
+    uint32_t inactive = 1000 * 60 * 2;  // inactivity of 15 minutes then start screen saver
+
+    for ( ;; ) {
+        if (screenSaverActive) {
+            if (millis() - matrixRunTime >= updateMatrix) {  // time has elapsed, update display
+                matrixRunTime = millis();
+                matrix();
+            }
+        } else {
+            if (millis() - animationRunTime >= updateAnimation) {  // time has elapsed, update display
+                animationRunTime = millis();
+                animation();
+            }
+
+            if (millis() >= inactiveRunTime + inactive) {       // We've been inactive for 'n' minutes, start screensaver
+                updateLog("No activity, start screen saver");
+                startScreenSaver();
+            }
+        }
+
+        touch();    // has the touch screen been pressed, check each loop or can we add a wait time?
+
+        vTaskDelay(30 / portTICK_PERIOD_MS);
+    }
+    vTaskDelete(NULL);
+}
+
+
 
 /**
  * @brief Animation of arrows to show the flow of electricity. Solar generation, water tank
