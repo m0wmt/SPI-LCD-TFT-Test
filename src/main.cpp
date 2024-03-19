@@ -87,9 +87,6 @@
 
 
 TFT_eSPI tft = TFT_eSPI();              // TFT object
-// TFT_eSprite sunSprite = TFT_eSprite(&tft);    // Sprite object
-// TFT_eSprite gridSprite = TFT_eSprite(&tft);    // Sprite object
-// TFT_eSprite waterTankSprite = TFT_eSprite(&tft);    // Sprite object
 
 TFT_eSprite lineSprite = TFT_eSprite(&tft);    // Sprite object
 TFT_eSprite rightArrowSprite = TFT_eSprite(&tft);    // Sprite object
@@ -102,12 +99,13 @@ TFT_eSprite logSprite = TFT_eSprite(&tft);    // Sprite object for log area
 #define REPEAT_CAL false        // True if calibration is requested after reboot
 #define TFT_GREY    0x5AEB
 #define TFT_TEAL    0x028A      // RGB 00 80 80
-// #define TFT_ORANGE  0xFBE1    // RGB 255 127 00
 #define TFT_GREEN_ENERGY    0x1d85  // RGB 3 44 5
 
-#define TFT_BACKGROUND 0x3189 // 0x2969 // 0x4a31 //    TFT_BLACK
+#define TFT_BACKGROUND 0x3189 // 0x2969 // 0x4a31 // TFT_BLACK
 #define TFT_FOREGROUND TFT_WHITE
-#define TFT_WATERTANK TFT_RED
+#define TFT_WATERTANK_HOT TFT_RED
+#define TFT_WATERTANK_WARM TFT_PURPLE
+#define TFT_WATERTANK_COLD TFT_BLUE
 
 #define totalButtonNumber 3
 #define LABEL1_FONT &FreeSansOblique12pt7b  // Key label font 1
@@ -126,32 +124,27 @@ TFT_eSPI_Button key[totalButtonNumber];     // TFT_eSPI button class
 #define MAX_COL_DOT6 32   // MAX_COL * 0.6
 
 int col_pos[MAX_COL];
-
 int chr_map[MAX_COL][MAX_CHR];
 byte color_map[MAX_COL][MAX_CHR];
-
 uint16_t yPos = 0;
-
 int rnd_x;
 int rnd_col_pos;
 int color;
 //
 
-// freeRTOS
-// TaskHandle_t animationTaskHandle = NULL;
-// TaskHandle_t matrixTaskHandle = NULL;
-// TaskHandle_t touchTaskHandle = NULL;
-
-// SemaphoreHandle_t tftSemaphore;
-// SemaphoreHandle_t animationSemaphore;
-// SemaphoreHandle_t matrixSemaphore;
-
-// void animationTask(void *parameter);
-// void matrixTask(void *parameter);
-// void touchTask(void *parameter);
+// Animation
+static int sunX = 100;      // Sun x y
+static int sunY = 105;
+static int gridX = 260;
+static int gridY = 105;
+static int waterX = 105;
+static int waterY = 170;
+static int width = 83;    // Width of drawing space minus width of arrow 
+static int step = 1;       // How far to move the triangle each iteration
 //
 
-int minute = 0;
+// freeRTOS
+//
 
 // Touchscreen related
 uint16_t t_x = 0, t_y = 0;      // touch screen coordinates
@@ -164,86 +157,26 @@ bool pressed = false;
 const uint16_t maxEntries = 7;
 const uint16_t maxEntryChars = 44;
 CLOG_NEW myLog1(maxEntries, maxEntryChars, NO_TRIGGER, WRAP);
-
-// This struct holds all the variables we need to draw a rounded square
-struct RoundedSquare {
-    int xStart;
-	int yStart;
-	int width;
-	int height;
-	byte cornerRadius;
-	uint16_t color;
-};
-
-int xMargin = 10;
-int margin = 290;
-
-RoundedSquare btnA = {
-	xMargin,
-	margin,
-	40,
-	20,
-	4,
-	TFT_LIGHTGREY
-};
-
-//btnB takes btnA as refference to position itself
-RoundedSquare btnB = {
-	btnA.xStart + btnA.width + xMargin,
-	margin,
-	40,
-	20,
-	4,
-	TFT_LIGHTGREY
-};
-
-//btnC takes btnB as refference to position itself
-RoundedSquare btnC = {
-	btnB.xStart + btnB.width + xMargin,
-	margin,
-	40,
-	20,
-	4,
-	TFT_LIGHTGREY
-};
 //
 
 // Function defenitions
-void initialiseScreen(void);
-void calibrateTouchScreen(void);
-void drawButtons(void);
-void showMessage(String msg, int x, int y, int textSize, int font);
-void updateLog(const char *msg);
-void drawHouse(int x, int y);
-void drawPylon(int x, int y);
-void drawSun(int x, int y);
-void drawWaterTank(int x, int y);
-void matrix(void);
-void drawRoundedSquare(RoundedSquare toDraw);
+static void initialiseScreen(void);
+static void drawButtons(void);
+static void showMessage(String msg, int x, int y, int textSize, int font);
+static void updateLog(const char *msg);
+static void drawHouse(int x, int y);
+static void drawPylon(int x, int y);
+static void drawSun(int x, int y);
+static void drawWaterTank(int x, int y);
+static void matrix(void);
 
 // Removed freeRTOS tasks to simple loop
-void animation(void);
-void matrix(void);
-void touch(void);
-void startScreenSaver(void);
+static void animation(void);
+static void matrix(void);
+static void touch(void);
+static void startScreenSaver(void);
 
 // New global variables !!!!
-int sunX = 100;      // Sun x y
-int sunY = 105;
-int gridX = 260;
-int gridY = 105;
-int waterX = 105;
-int waterY = 170;
-int width = 83;    // Width of drawing space minus width of arrow 
-int step = 1;       // How far to move the triangle each iteration
-int sunStartPosition = sunX;       // 
-int gridImportStartPosition = gridX;     //
-int gridExportStartPosition = gridX;     //
-int waterStartPosition = waterX;     //
-int sunArrow = sunStartPosition + 40;                // solar generation arrow start point 
-int gridImportArrow = gridImportStartPosition + width;      // grid import arrow start point
-int gridExportArrow = gridExportStartPosition;      // grid export arrow start point
-int waterArrow = waterStartPosition + 15;            // water heating arrow start point - move so it's not the same position as sum
 
 bool solarGeneration = true;
 bool gridImport = true;
@@ -255,15 +188,15 @@ uint8_t updateAnimation = 50;        // update every 40ms
 uint32_t matrixRunTime = -99999;  // time for next update
 uint8_t updateMatrix = 200;        // update matrix screen saver every 150ms
 uint32_t inactiveRunTime = -99999;  // inactivity run time timer
-uint32_t inactive = 1000 * 60 * 2;  // inactivity of 15 minutes then start screen saver
+uint32_t inactive = 1000 * 60 * 15;  // inactivity of 15 minutes then start screen saver
 
-int touchStatus = 0;        // Current state of touch screen/screensaver
 bool screenSaverActive = false;     // Is the screen saver active or not
 
-void setup() {
+
+void setup(void) {
     BaseType_t xReturned;
 
-    // Set all chip selects high to avoid bus contention during initialisation of each peripheral
+    // Set all chip selects high to astatic void bus contention during initialisation of each peripheral
     digitalWrite(TOUCH_CS, HIGH);   // ********** TFT_eSPI touch **********
     digitalWrite(TFT_CS, HIGH);     // ********** TFT_eSPI screen library **********
     // digitalWrite(SD_CS, HIGH);   // ********** SD card **********
@@ -289,25 +222,16 @@ void setup() {
 
     tft.setTextSize(2);
 
-    calibrateTouchScreen();
-
     Serial.println("Initialisation complete");
-
-
-    //drawButtons();
 
     // Create the Sprites
     logSprite.createSprite(270, 75);
     logSprite.fillSprite(TFT_BACKGROUND);
 
     // Sprites for animations
-    //lineSprite.setColorDepth(8);
     lineSprite.createSprite(95, 1);
-    //rightArrowSprite.setColorDepth(8);
     rightArrowSprite.createSprite(12, 21);
-    //leftArrowSprite.setColorDepth(8);
     leftArrowSprite.createSprite(12, 21);
-    //whiteArrowSprite.setColorDepth(8);
     fillFrameSprite.createSprite(12, 21);
     lineSprite.fillSprite(TFT_BACKGROUND);
     rightArrowSprite.fillSprite(TFT_BACKGROUND);
@@ -335,13 +259,6 @@ void setup() {
 
     initialiseScreen(); 
 
-    // CLOG(myLog1.add(), "00:00:00 WiFi setup");
-    // CLOG(myLog1.add(), "13:43:20 NTP setup");
-    // CLOG(myLog1.add(), "13:43:23 MQTT setup");
-    // CLOG(myLog1.add(), "13:43:24 CC1101 setup");
-    // CLOG(myLog1.add(), "13:43:25 All ready to go");
-    // CLOG(myLog1.add(), "13:43:26 Water Tank: Heating by solar");
-
     updateLog("Sender Battery OK"); // 43 chars max
     
     delay(1000);
@@ -355,7 +272,7 @@ void setup() {
     inactiveRunTime = millis();     // start inactivity timer for turning on the screen saver
 }
 
-void loop() {
+void loop(void) {
     if (screenSaverActive) {
         if (millis() - matrixRunTime >= updateMatrix) {  // time has elapsed, update display
             matrixRunTime = millis();
@@ -373,11 +290,23 @@ void loop() {
         }
     }
 
-    touch();    // has the touch screen been pressed
+    touch();    // has the touch screen been pressed, check each loop or can we add a wait time?
 }
 
-void animation(void) {
-    // int n;
+/**
+ * @brief Animation of arrows to show the flow of electricity. Solar generation, water tank
+ * heating, grid import or export.
+ * 
+ */
+static void animation(void) {
+    static int sunStartPosition = sunX;       // 
+    static int gridImportStartPosition = gridX;     //
+    static int gridExportStartPosition = gridX;     //
+    static int waterStartPosition = waterX;     //
+    static int sunArrow = sunStartPosition + 40;                // solar generation arrow start point 
+    static int gridImportArrow = gridImportStartPosition + width;      // grid import arrow start point
+    static int gridExportArrow = gridExportStartPosition;      // grid export arrow start point
+    static int waterArrow = waterStartPosition + 15;            // water heating arrow start point - move so it's not the same position as sum
 
     // Solar generation arrow
     if (solarGeneration) {
@@ -411,7 +340,6 @@ void animation(void) {
 
     // Water tank heating by solar arrow
     if (waterHeating) {
-        //dottedLineSprite.pushSprite(waterX, waterY);
         rightArrowSprite.pushSprite(waterArrow, waterY);
         waterArrow += step;
         if (waterArrow > waterStartPosition + width) {
@@ -421,8 +349,11 @@ void animation(void) {
     }
 }
 
-
-void touch(void) {
+/**
+ * @brief Touch screen has been touched!
+ * 
+ */
+static void touch(void) {
     if (tft.getTouch(&t_x, &t_y))
         pressed = true;
 
@@ -455,7 +386,7 @@ void touch(void) {
  * @brief Matrix style screen saver.
  * 
  */
-void matrix(void) {
+static void matrix(void) {
 
     for (int j = 0; j < MAX_COL; j++) {
         rnd_col_pos = random(1, MAX_COL);
@@ -468,7 +399,7 @@ void matrix(void) {
             tft.setTextColor(color_map[rnd_col_pos][i] << 5, TFT_BLACK); // Set the green character brightness
 
             if (color_map[rnd_col_pos][i] == 63) {
-                tft.setTextColor(TFT_DARKGREY, TFT_BLACK); // Draw darker green character
+                tft.setTextColor(TFT_DARKGREY, TFT_BLACK); // Draw different colour character
             }
 
             if ((chr_map[rnd_col_pos][i] == 0) || (color_map[rnd_col_pos][i] == 63)) {
@@ -517,7 +448,7 @@ void matrix(void) {
  * saver ends.  This will draw all static elements, i.e. house, sun, pylon, hot water
  * tank, menu buttons etc.
  */
-void initialiseScreen(void) {
+static void initialiseScreen(void) {
     tft.fillScreen(TFT_BACKGROUND);
 
     // Define area at top of screen for date, time etc.
@@ -565,6 +496,7 @@ void initialiseScreen(void) {
     showMessage("LQI: 23", 160, 310, 0, 1);
 
     // Demo values
+
     // Solar generation now
     tft.setCursor(110, 85, 2);   // position and font
     tft.setTextColor(TFT_FOREGROUND, TFT_BACKGROUND);
@@ -593,10 +525,10 @@ void initialiseScreen(void) {
 }
 
 /**
- * @brief Start the screen saver.  Will be started by the user touching the screen
+ * @brief Start/setup the screen saver.  Will be started by the user touching the screen
  * or after 'n' minutes of inactivity to save the screen from burn-in.
  */
-void startScreenSaver(void) {
+static void startScreenSaver(void) {
     screenSaverActive = true;
             
     tft.fillScreen(TFT_BLACK);
@@ -612,125 +544,6 @@ void startScreenSaver(void) {
 }
 
 /**
- * @brief Calibrate the touch screen
- * 
- */
-void calibrateTouchScreen(void) {
-  uint16_t calData[5];
-  uint8_t calDataOK = 0;
-
-//   // SPIFFS uses
-//   {
-//     // check file system exists
-//     if (!SPIFFS.begin()) {
-//       Serial.println("Formating file system");
-//       SPIFFS.format();
-//       SPIFFS.begin();
-//     }
-
-//     // check if calibration file exists and size is correct
-//     if (SPIFFS.exists(CALIBRATION_FILE)) {
-//       if (REPEAT_CAL)
-//       {
-//         // Delete if we want to re-calibrate
-//         SPIFFS.remove(CALIBRATION_FILE);
-//       }
-//       else
-//       {
-//         File f = SPIFFS.open(CALIBRATION_FILE, "r");
-//         if (f) {
-//           if (f.readBytes((char *)calData, 14) == 14)
-//             calDataOK = 1;
-//           f.close();
-//         }
-//       }
-//     }
-//   }
-
-//   if (calDataOK && !REPEAT_CAL) {
-//     // calibration data valid
-//     tft.setTouch(calData);
-//   } else {
-    // data not valid so recalibrate
-
-    if (REPEAT_CAL) {
-        tft.fillScreen(TFT_BLACK);
-        tft.setCursor(20, 0);
-        tft.setTextFont(2);
-        tft.setTextSize(1);
-        tft.setTextColor(TFT_WHITE, TFT_BLACK);
-
-        tft.println("Touch corners as indicated");
-
-        tft.calibrateTouch(calData, TFT_MAGENTA, TFT_BLACK, 15);
-        Serial.print(calData[1]);
-        Serial.print(",");
-        Serial.print(calData[2]);
-        Serial.print(",  ");
-        Serial.print(calData[3]);
-        Serial.print(",");
-        Serial.print(calData[4]);
-        Serial.print(",  ");
-        Serial.print(calData[5]);
-        Serial.print(",");
-        Serial.print(calData[6]);
-        Serial.print(",  ");
-        Serial.print(calData[7]);
-        Serial.print(",");
-        Serial.println(calData[8]);
-
-        tft.setTextColor(TFT_GREEN, TFT_BLACK);
-        tft.println("Calibration complete!");
-
-        tft.setTextFont(1);
-        tft.println();
-        tft.setTextColor(TFT_RED, TFT_BLACK);
-        tft.println("Set REPEAT_CAL to false to stop this running again!");
-    }
-
-
-    // // store data
-    // if (existSD) {
-    //   File f = SD.open(CALIBRATION_FILE, "w");
-    //   if (f) {
-    //     f.write((const unsigned char *)calData, 14);
-    //     f.close();
-    //   }
-    // }
-    // else {
-    //   File f = SPIFFS.open(CALIBRATION_FILE, "w");
-    //   if (f) {
-    //     f.write((const unsigned char *)calData, 14);
-    //     f.close();
-    //   }
-    // }
-}
-
-void drawButtons(void) {
-    //tft.setRotation(1);
-    tft.fillScreen(TFT_GREY);
-    // Draw the keys
-    tft.setFreeFont(LABEL1_FONT);
-    char keyLabel[totalButtonNumber][8] = {"Solar", "iBoost", "Log" };
-    key[0].initButton(&tft, 80, 40, 110, 60, TFT_BLACK, TFT_WHITE, TFT_BLUE, keyLabel[0] , 1 ); // x, y, w, h, outline, fill, color, label, text_Size
-    key[0].drawButton();
-    key[1].initButton(&tft, 80, 115, 110, 60, TFT_BLACK, TFT_WHITE, TFT_BLUE, keyLabel[1] , 1 );
-    key[1].drawButton();
-    key[2].initButton(&tft, 80, 190, 110, 60, TFT_BLACK, TFT_WHITE, TFT_BLUE, keyLabel[2] , 1 );
-    key[2].drawButton();
-}
-
-// =======================================================================================
-// Draw an X centered on x,y
-// =======================================================================================
-
-void drawX(int x, int y) {
-    tft.drawLine(x-5, y-5, x+5, y+5, TFT_WHITE);
-    tft.drawLine(x-5, y+5, x+5, y-5, TFT_WHITE);
-}
-
-
-/**
  * @brief Show a message on the screen, mainly used for time, date and mainly fixed
  * information that does not change a lot (except the time obviously!).
  * 
@@ -740,7 +553,7 @@ void drawX(int x, int y) {
  * @param textSize Text size to use
  * @param font Default font to use, 1, 2 etc.
  */
-void showMessage(String msg, int x, int y, int textSize, int font) {
+static void showMessage(String msg, int x, int y, int textSize, int font) {
     tft.setTextColor(TFT_FOREGROUND, TFT_BACKGROUND);
     tft.setCursor(x, y, font);   // position and font
     tft.setTextSize(textSize);
@@ -751,7 +564,7 @@ void showMessage(String msg, int x, int y, int textSize, int font) {
  * @brief Write cLog logging to the log screen area.
  * 
  */
-void updateLog(const char *msg) {
+static void updateLog(const char *msg) {
     int y = 3; // top of log area
 
     // Add time to message then add to CLOG
@@ -768,21 +581,6 @@ void updateLog(const char *msg) {
     logSprite.pushSprite(211, 246);
 }
 
-//This function will take a RoundedSquare struct and use these variables to display data
-//It will save us more code the more elements we add
-void drawRoundedSquare(RoundedSquare toDraw) {
-	tft.fillRoundRect(
-		toDraw.xStart,
-		toDraw.yStart,
-		toDraw.width, 
-		toDraw.height, 
-		toDraw.cornerRadius,
-		toDraw.color
-	);
-
-    tft.setTextColor(TFT_WHITE);
-    tft.drawString("Log", toDraw.xStart + 5, toDraw.yStart + 5, 1);
-}
 
 /**
  * @brief Draw a house where xy is the bottom left of the house
@@ -790,7 +588,7 @@ void drawRoundedSquare(RoundedSquare toDraw) {
  * @param x Bottom left x of house
  * @param y Bottom left y of house
  */
-void drawHouse(int x, int y) {
+static void drawHouse(int x, int y) {
     tft.drawLine(x, y, x+36, y, TFT_FOREGROUND);      // Bottom
     tft.drawLine(x, y, x, y-30, TFT_FOREGROUND);      // Left wall
     tft.drawLine(x+36, y, x+36, y-30, TFT_FOREGROUND);      // Right wall
@@ -809,7 +607,7 @@ void drawHouse(int x, int y) {
  * @param x Bottom left x position of pylon
  * @param y Bottom left y position of pylon
  */
-void drawPylon(int x, int y) {
+static void drawPylon(int x, int y) {
     tft.drawLine(x, y, x+5, y-25, TFT_FOREGROUND);      // left foot
     tft.drawLine(x+5, y-25, x+5, y-40, TFT_FOREGROUND);      // left straight
     tft.drawLine(x+5, y-40, x+10, y-50, TFT_FOREGROUND);      // left top angle
@@ -861,7 +659,7 @@ void drawPylon(int x, int y) {
  * @param x Display x coordinates
  * @param y Display y coordinates
  */
-void drawSun(int x, int y) {
+static void drawSun(int x, int y) {
     int scale = 12;  // 6
 
     int linesize = 3;
@@ -892,10 +690,10 @@ void drawSun(int x, int y) {
     }
 }
 
-void drawWaterTank(int x, int y) {
+static void drawWaterTank(int x, int y) {
 //350, 160
     tft.drawRoundRect(x, y, 22, 33, 6, TFT_FOREGROUND);
-    tft.fillRoundRect(x+1, y+1, 20, 31, 6, TFT_WATERTANK);
+    tft.fillRoundRect(x+1, y+1, 20, 31, 6, TFT_WATERTANK_HOT);
 
     // shower hose
     tft.drawLine(x+11, y, x+11, y-5, TFT_FOREGROUND);
@@ -905,19 +703,18 @@ void drawWaterTank(int x, int y) {
     tft.drawLine(x+31, y+7, x+39, y+7, TFT_FOREGROUND);
 
     // water
-    tft.drawLine(x+31, y+8, x+27, y+15, TFT_WATERTANK); // left
-    tft.drawLine(x+33, y+8, x+30, y+15, TFT_WATERTANK); // left
+    tft.drawLine(x+31, y+8, x+27, y+15, TFT_WATERTANK_HOT); // left
+    tft.drawLine(x+33, y+8, x+30, y+15, TFT_WATERTANK_HOT); // left
 
-    tft.drawLine(x+35, y+8, x+35, y+15, TFT_WATERTANK); // middle
+    tft.drawLine(x+35, y+8, x+35, y+15, TFT_WATERTANK_HOT); // middle
 
-    tft.drawLine(x+37, y+8, x+39, y+15, TFT_WATERTANK); // right
-    tft.drawLine(x+39, y+8, x+42, y+15, TFT_WATERTANK); // right
+    tft.drawLine(x+37, y+8, x+39, y+15, TFT_WATERTANK_HOT); // right
+    tft.drawLine(x+39, y+8, x+42, y+15, TFT_WATERTANK_HOT); // right
 }
 
-// Draw iBoost
-// Draw water tank and shower
-
-// void print_stats(void)
+// Not used or tested but saved as could be useful one day!
+//
+// static void print_stats(void)
 // {
 //     char *str = (char *)malloc(sizeof(char) * 2000);
 //     memset(str, 0, 2000);
@@ -955,7 +752,7 @@ void drawWaterTank(int x, int y) {
 //       /* For percentage calculations. */
 //       ulTotalRunTime /= 100UL;
  
-//       /* Avoid divide by zero errors. */
+//       /* Astatic void divide by zero errors. */
 //       if( ulTotalRunTime > 0 )
 //       {
 //          /* For each populated position in the pxTaskStatusArray array,
@@ -964,8 +761,8 @@ void drawWaterTank(int x, int y) {
 //          for( int x = 0; x < uxArraySize; x++ )
 //          {
 //             TaskStatus_t *taskStatus;
-//             void *tmp = &pxTaskStatusArray[x];
-//             void *hmm = tmp + (4 * x);
+//             static void *tmp = &pxTaskStatusArray[x];
+//             static void *hmm = tmp + (4 * x);
 //             taskStatus = (TaskStatus_t*)hmm;
  
 //                 // Serial.printf("Name: %.5s, ulRunTimeCounter: %d\n", taskStatus->pcTaskName , taskStatus->ulRunTimeCounter);
