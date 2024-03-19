@@ -180,7 +180,6 @@ static void matrix(void);
 static void touch(void);
 static void startScreenSaver(void);
 
-// New global variables !!!!
 static uint32_t inactiveRunTime = -99999;  // inactivity run time timer
 
 bool solarGeneration = true;
@@ -194,6 +193,31 @@ bool screenSaverActive = false;     // Is the screen saver active or not
 
 void setup(void) {
     BaseType_t xReturned;
+
+
+    xReturned = xTaskCreate(displayTask, "displayTask", 3072, NULL, tskIDLE_PRIORITY, &displayTaskHandle);
+    if (xReturned != pdPASS) {
+        Serial.println("Failed to create displayTask, setup failed");
+    } else {
+        Serial.println("Setup complete");
+    }
+}
+
+void loop(void) {
+    // See task
+}
+
+/**
+ * @brief Task to handle all things screen related.
+ * 
+ */
+void displayTask(void *parameter) {
+    uint32_t animationRunTime = -99999;  // time for next update
+    uint8_t updateAnimation = 50;        // update every 40ms
+    uint32_t matrixRunTime = -99999;  // time for next update
+    uint8_t updateMatrix = 200;        // update matrix screen saver every 150ms
+    uint32_t inactive = 1000 * 60 * 2;  // inactivity of 15 minutes then start screen saver
+    uint8_t counter = 0;
 
     // Set all chip selects high to astatic void bus contention during initialisation of each peripheral
     digitalWrite(TOUCH_CS, HIGH);   // ********** TFT_eSPI touch **********
@@ -269,29 +293,6 @@ void setup(void) {
 
     inactiveRunTime = millis();     // start inactivity timer for turning on the screen saver
 
-    xReturned = xTaskCreate(displayTask, "displayTask", 2048, NULL, tskIDLE_PRIORITY, &displayTaskHandle);
-    if (xReturned != pdPASS) {
-        Serial.println("Failed to create displayTask, setup failed");
-    } else {
-        Serial.println("Setup complete");
-    }
-}
-
-void loop(void) {
-    // See task
-}
-
-/**
- * @brief Task to handle all things screen related.
- * 
- */
-void displayTask(void *parameter) {
-    uint32_t animationRunTime = -99999;  // time for next update
-    uint8_t updateAnimation = 50;        // update every 40ms
-    uint32_t matrixRunTime = -99999;  // time for next update
-    uint8_t updateMatrix = 200;        // update matrix screen saver every 150ms
-    uint32_t inactive = 1000 * 60 * 2;  // inactivity of 15 minutes then start screen saver
-
     for ( ;; ) {
         if (screenSaverActive) {
             if (millis() - matrixRunTime >= updateMatrix) {  // time has elapsed, update display
@@ -313,6 +314,12 @@ void displayTask(void *parameter) {
         touch();    // has the touch screen been pressed, check each loop or can we add a wait time?
 
         vTaskDelay(30 / portTICK_PERIOD_MS);
+        counter++;
+        if (counter > 100) {
+            counter = 0;
+            Serial.print("Display Task Stack Left: ");
+            Serial.println(uxTaskGetStackHighWaterMark(NULL));
+        }
     }
     vTaskDelete(NULL);
 }
